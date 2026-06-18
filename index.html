@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JLS 학사관리 시스템</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ===================== 로그인 ===================== -->
+<div id="loginView">
+  <div class="login-card">
+    <div class="login-brand">
+      <div class="login-mark">JLS</div>
+      <div>
+        <h1>정상어학원 학사관리</h1>
+        <p>상담·인원 통합 운영 콘솔</p>
+      </div>
+    </div>
+    <div class="field">
+      <label for="loginId">아이디</label>
+      <input id="loginId" type="text" autocomplete="username" placeholder="아이디 입력">
+    </div>
+    <div class="field">
+      <label for="loginPw">비밀번호</label>
+      <input id="loginPw" type="password" autocomplete="current-password" placeholder="비밀번호 입력">
+    </div>
+    <button class="login-btn" id="loginBtn">로그인</button>
+    <div class="login-err" id="loginErr"></div>
+    <div class="login-hint">
+      관리자 <code>admin</code> / <code>1234</code><br>
+      분원 <code>seosuwon</code> · <code>suwon</code> · <code>jangan</code> · <code>namdongtan</code> · <code>unjeong1</code> · <code>unjeong2</code> (비번 모두 <code>1234</code>)
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 앱 셸 ===================== -->
+<div id="appView">
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="sb-brand">
+        <div class="sb-mark">JLS</div>
+        <div>
+          <div class="t">정상어학원</div>
+          <div class="s" id="sbScope">학사관리</div>
+        </div>
+      </div>
+      <nav class="sb-nav" id="sbNav"></nav>
+      <div class="sb-foot">
+        <div class="sb-user">
+          <div class="sb-avatar" id="sbAvatar">A</div>
+          <div>
+            <div class="un" id="sbUserName">관리자</div>
+            <div class="ur" id="sbUserRole">admin</div>
+          </div>
+        </div>
+        <button class="sb-logout" id="logoutBtn">로그아웃</button>
+      </div>
+    </aside>
+    <div class="main">
+      <header class="topbar">
+        <div class="crumbs" id="crumbs"></div>
+        <div class="topbar-spacer"></div>
+        <div class="sem-pick">
+          <span>학기</span>
+          <select id="semSelect"></select>
+        </div>
+      </header>
+      <main class="content" id="content"></main>
+    </div>
+  </div>
+</div>
+
+<!-- 모달 -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal" id="modalBox"></div>
+</div>
+<div id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
