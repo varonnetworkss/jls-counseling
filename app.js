@@ -360,24 +360,65 @@ function withdrawMonth(rec){
   const m = String(d).match(/\d{4}-(\d{1,2})/) || String(d).match(/\d{4}\.(\d{1,2})/);
   return m ? parseInt(m[1],10) : null;
 }
+/* 변경월을 변경일(cutDay) 기준으로 앞/뒤 구간 실적으로 쪼갬.
+   퇴원 책임: 변경일 당일까지(<=cutDay) = 이전 담임(마지막 수업이 이전 담임),
+            변경일 다음날부터(>cutDay) = 새 담임.
+   신규/등원: 변경일 당일부터(>=cutDay) = 새 담임이 받음. */
+function splitMonthForGroup(recs, month, cutDay){
+  let monthStart = 0;
+  recs.forEach(r=>{
+    const em = r.enrollDate ? monthOfDate(r.enrollDate) : null;
+    const wm = r.withdrawDate ? monthOfDate(r.withdrawDate) : null;
+    const enrolledBefore = (em==null || em<month);
+    const notLeftBefore  = (wm==null || wm>=month);
+    if(enrolledBefore && notLeftBefore) monthStart++;
+  });
+  // 신규: 변경일 전(<cutDay)은 이전 담임, 당일부터(>=cutDay)는 새 담임
+  const newBefore = recs.filter(r=> monthOfDate(r.enrollDate)===month && dayOfDate(r.enrollDate)<cutDay).length;
+  const newAfter  = recs.filter(r=> monthOfDate(r.enrollDate)===month && dayOfDate(r.enrollDate)>=cutDay).length;
+  // 퇴원: 변경일 당일까지(<=cutDay)는 이전 담임, 다음날부터(>cutDay)는 새 담임
+  const wdBefore  = recs.filter(r=> monthOfDate(r.withdrawDate)===month && dayOfDate(r.withdrawDate)<=cutDay && !r.transfer).length;
+  const trBefore  = recs.filter(r=> monthOfDate(r.withdrawDate)===month && dayOfDate(r.withdrawDate)<=cutDay && r.transfer).length;
+  const wdAfter   = recs.filter(r=> monthOfDate(r.withdrawDate)===month && dayOfDate(r.withdrawDate)>cutDay && !r.transfer).length;
+  const trAfter   = recs.filter(r=> monthOfDate(r.withdrawDate)===month && dayOfDate(r.withdrawDate)>cutDay && r.transfer).length;
+  const handover  = monthStart + newBefore - wdBefore - trBefore; // 인계 시점 인원
+  return {
+    before:{ monthStart, newCnt:newBefore, wd:wdBefore, tr:trBefore },
+    after: { monthStart:handover, newCnt:newAfter, wd:wdAfter, tr:trAfter },
+  };
+}
 /* 인원마감 — 한 그룹(강사 또는 레벨)의 월별 월초+신규/퇴원/퇴원율 계산.
    recs: 해당 그룹의 semesterRecords(재원+퇴원 모두 포함). months: [3,4,5] 등.
    첫 달 월초 = 학기초부터 다닌 인원(enrollMonth==null).
    이후 달 월초 = 전달(월초+신규) − 전달 퇴원.
    월별 퇴원율 = 그 달 퇴원 ÷ (월초+신규). 평균퇴원율 = 월별 퇴원율의 단순평균. */
-function monthlyClosing(recs, months, activeMonths){
-  // activeMonths: 이 그룹(담임)이 담당하는 월 Set. 주면 그 외 달은 빈칸 처리.
+function monthlyClosing(recs, months, activeMonths, splits){
+  // activeMonths: 담당 월 Set (그 외 빈칸). splits: 변경월 날짜쪼갬 정보 배열.
   const startOfSem = recs.filter(r=> enrollMonth(r)==null).length;
+  const splitByMonth = new Map();
+  (splits||[]).forEach(sp=> splitByMonth.set(sp.month, sp));
   let carry = 0;
   const cells = [];
   const rates = [];
   months.forEach((m, idx)=>{
     const active = !activeMonths || activeMonths.has(m);
-    const newThis = recs.filter(r=> enrollMonth(r)===m).length;
-    const monthStart = idx===0 ? startOfSem : carry;
+    const sp = splitByMonth.get(m);
+    let monthStart = idx===0 ? startOfSem : carry;
+    let newThis, wdThis, trThis;
+    if(sp){
+      // 변경월: 날짜로 쪼갬
+      const split = splitMonthForGroup(recs, m, sp.cutDay);
+      const part = sp.side==='before' ? split.before : split.after;
+      monthStart = part.monthStart;
+      newThis = part.newCnt;
+      wdThis = part.wd;
+      trThis = part.tr;
+    } else {
+      newThis = recs.filter(r=> enrollMonth(r)===m).length;
+      wdThis  = recs.filter(r=> withdrawMonth(r)===m && !r.transfer).length;
+      trThis  = recs.filter(r=> withdrawMonth(r)===m && r.transfer).length;
+    }
     const baseNew = monthStart + newThis;
-    const wdThis = recs.filter(r=> withdrawMonth(r)===m && !r.transfer).length;
-    const trThis = recs.filter(r=> withdrawMonth(r)===m && r.transfer).length;
     const rate = baseNew>0 ? (wdThis/baseNew*100) : 0;
     if(active){
       cells.push({ month:m, baseNew, withdraw:wdThis, transfer:trThis, rate, blank:false });
@@ -1475,18 +1516,20 @@ function closingTable(groups, months, firstColLabel){
   const monthNames = months.map(m=>m+'월');
   const totals = { cells: months.map(()=>({baseNew:0,withdraw:0})), totWithdraw:0 };
   const bodyRows = groups.map((g, i)=>{
-    const r = monthlyClosing(g.recs, months, g.activeMonths);
+    const r = monthlyClosing(g.recs, months, g.activeMonths, g.splits);
     r.cells.forEach((c,idx)=>{ if(!c.blank){ totals.cells[idx].baseNew+=c.baseNew; totals.cells[idx].withdraw+=c.withdraw; } });
     totals.totWithdraw += r.totWithdraw;
+    const splitMonths = new Set((g.splits||[]).map(s=>s.month));
     const monthCells = r.cells.map(c=>{
-      if(c.blank) return `<td class="num blank">·</td><td class="num blank">·</td><td class="num blank">·</td>`;
-      return `<td class="num">${c.baseNew||'-'}</td>
-      <td class="num">${c.withdraw||'-'}</td>
-      <td class="num"><span style="color:${c.rate>=10?'var(--neg)':c.rate>=5?'var(--warn)':'var(--ink-2)'}">${c.baseNew?c.rate.toFixed(1)+'%':'-'}</span></td>`;
+      // 담당 안 하는 달 → 빨강 칸
+      if(c.blank) return `<td class="num cell-na">-</td><td class="num cell-na">-</td><td class="num cell-na">-</td>`;
+      // 변경이 일어난(갈라진) 달 → 노랑 칸
+      const cls = splitMonths.has(c.month) ? ' cell-split' : '';
+      return `<td class="num${cls}">${c.baseNew||'-'}</td>
+      <td class="num${cls}">${c.withdraw||'-'}</td>
+      <td class="num${cls}"><span style="color:${c.rate>=10?'var(--neg)':c.rate>=5?'var(--warn)':'var(--ink-2)'}">${c.baseNew?c.rate.toFixed(1)+'%':'-'}</span></td>`;
     }).join('');
-    const nameCell = g.subName
-      ? `<div class="nm">${esc(g.name)}</div><div style="font-size:10.5px;color:var(--ink-3)">${esc(g.subName)}</div>`
-      : `<span class="nm">${esc(g.name)}</span>`;
+    const nameCell = `<span class="nm">${esc(g.name)}</span>`;
     return `<tr>
       <td class="cc">${i+1}</td>
       <td>${nameCell}</td>
@@ -1577,17 +1620,18 @@ function renderClosing(branchId){
   el('content').innerHTML = html;
 }
 
-/* 담임 변경을 반영한 강사별 그룹 생성.
+/* 담임 변경을 반영한 강사별 그룹 생성 (날짜 정확히 쪼개기).
    변경 없는 반: 현재 담임에 통째로 (모든 월 담당).
-   변경된 반: 변경 전/후 담임 두 그룹, 각자 담당 월만 표시.
-   변경월 책임: 변경일 15일 이전이면 그 달부터 새 담임, 16일 이후면 다음 달부터. */
+   변경된 반: 변경월은 둘 다 담당하되 그 달을 변경일 기준으로 날짜 쪼갬.
+   - 변경 전 담임: 변경월 이전 달들 + 변경월의 (1일~변경일 전날) 구간
+   - 변경 후 담임: 변경월의 (변경일~말일) 구간 + 변경월 이후 달들 */
 function teacherGroupsWithChanges(branchId, semId, recs, months){
   const changes = (db.teacherChanges||[]).filter(c=>c.branchId===branchId && c.semesterId===semId);
   const changeByClass = new Map();
   changes.forEach(c=>{ changeByClass.set(c.className, c); });
 
   const groupMap = new Map();
-  const ensure = (t)=>{ if(!groupMap.has(t)) groupMap.set(t, { name:t, recs:[], months:new Set() }); return groupMap.get(t); };
+  const ensure = (t)=>{ if(!groupMap.has(t)) groupMap.set(t, { name:t, recs:[], months:new Set(), splits:[] }); return groupMap.get(t); };
 
   const byClass = new Map();
   recs.forEach(r=>{ const k=r.className||'(미배정)'; if(!byClass.has(k)) byClass.set(k,[]); byClass.get(k).push(r); });
@@ -1603,26 +1647,32 @@ function teacherGroupsWithChanges(branchId, semId, recs, months){
     }
     const chMonth = monthOfDate(ch.date);
     const chDay = dayOfDate(ch.date) || 1;
-    const cutoff = (chDay<=15) ? chMonth : chMonth+1;
-    const beforeMonths = months.filter(m=> m < cutoff);
-    const afterMonths  = months.filter(m=> m >= cutoff);
-    if(beforeMonths.length){
-      const g = ensure(ch.fromTeacher||'미배정');
-      classRecs.forEach(r=> g.recs.push(r));
-      beforeMonths.forEach(m=> g.months.add(m));
+    const beforeMonths = months.filter(m=> m < chMonth);
+    const afterMonths  = months.filter(m=> m > chMonth);
+    const hasChMonth = months.includes(chMonth);
+
+    // 변경 전 담임: 이전 달들 (통째) + 변경월 앞부분(날짜 쪼갬)
+    const gBefore = ensure(ch.fromTeacher||'미배정');
+    classRecs.forEach(r=> gBefore.recs.push(r));
+    beforeMonths.forEach(m=> gBefore.months.add(m));
+    if(hasChMonth && chDay>1){
+      gBefore.months.add(chMonth);
+      gBefore.splits.push({ className, month:chMonth, cutDay:chDay, side:'before' });
     }
-    if(afterMonths.length){
-      const g = ensure(ch.toTeacher||'미배정');
-      classRecs.forEach(r=> g.recs.push(r));
-      afterMonths.forEach(m=> g.months.add(m));
+
+    // 변경 후 담임: 변경월 뒷부분(날짜 쪼갬) + 이후 달들(통째)
+    const gAfter = ensure(ch.toTeacher||'미배정');
+    classRecs.forEach(r=> gAfter.recs.push(r));
+    afterMonths.forEach(m=> gAfter.months.add(m));
+    if(hasChMonth){
+      gAfter.months.add(chMonth);
+      gAfter.splits.push({ className, month:chMonth, cutDay:chDay, side:'after' });
     }
   });
 
   const allMonthsCount = months.length;
   return [...groupMap.values()].map(g=>{
-    const isPartial = g.months.size < allMonthsCount;
-    const sub = isPartial ? ([...g.months].sort((a,b)=>a-b).map(m=>m+'월').join('·')+' 담당') : '';
-    return { name:g.name, recs:g.recs, activeMonths:g.months, subName: sub };
+    return { name:g.name, recs:g.recs, activeMonths:g.months, splits:g.splits };
   }).sort((a,b)=> b.recs.length - a.recs.length);
 }
 
