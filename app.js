@@ -35,12 +35,21 @@ function semesterBack(base, n){
 function ensureSemesters(){
   if(!db.semesters) db.semesters = [];
   const cur = currentSemester();
-  const wanted = [cur, semesterBack(cur,1), semesterBack(cur,2), semesterBack(cur,3)];
-  wanted.forEach(w=>{
-    const ex = db.semesters.find(s=>s.id===w.id);
-    if(!ex) db.semesters.push({ id:w.id, name:w.name });
-    else if(ex.name!==w.name) ex.name = w.name;
-  });
+  // 현재 학기는 항상 포함 (없으면 추가)
+  if(!db.semesters.some(s=>s.id===cur.id)){
+    db.semesters.push({ id:cur.id, name:cur.name });
+  } else {
+    const ex = db.semesters.find(s=>s.id===cur.id);
+    if(ex.name!==cur.name) ex.name = cur.name;
+  }
+  // 실제 데이터(학생 레코드/상담)가 있는 과거 학기만 유지, 데이터 없는 과거학기는 목록에서 제거
+  const usedSemIds = new Set([
+    cur.id,
+    ...((db.semesterRecords||[]).map(r=>r.semesterId)),
+    ...((db.counselingHistories||[]).map(c=>c.semesterId)),
+  ]);
+  db.semesters = db.semesters.filter(s=> usedSemIds.has(s.id));
+  // 최신순 정렬
   const rank = id=>{
     const m = String(id).match(/sem_(\d+)_(\w+)/);
     if(!m) return 0;
@@ -1007,6 +1016,15 @@ function renderStudentManagement(){
     .filter(m=>m.branchId===branchId && m.semesterId===semId)
     .sort((a,b)=> (b.date||'').localeCompare(a.date||''));
 
+  // 기존 반 목록 (className 고유값 기준, 담임도 함께). 드롭다운 선택용.
+  const classMap = new Map();
+  activeRecordsOf(branchId, semId).forEach(r=>{
+    if(!classMap.has(r.className)){
+      classMap.set(r.className, { className:r.className, label:r.classLabel||classLabel(r.className)||r.className, teacher:r.teacher });
+    }
+  });
+  const classList = [...classMap.values()].sort((a,b)=> a.label.localeCompare(b.label,'ko'));
+
   el('content').innerHTML = `
     <div class="page-head">
       <h2>학생관리</h2>
@@ -1030,7 +1048,16 @@ function renderStudentManagement(){
           <div class="field"><label>학년</label><input id="nsGrade" placeholder="학년"></div>
         </div>
         <div class="form-row">
-          <div class="field"><label>반명</label><input id="nsClass" placeholder="예: DSC2"></div>
+          <div class="field full"><label>반 선택</label>
+            <select id="nsClassSelect">
+              <option value="">기존 반에서 선택…</option>
+              ${classList.map(c=>`<option value="${esc(c.className)}" data-teacher="${esc(c.teacher)}">${esc(c.label)} · ${esc(c.teacher)}</option>`).join('')}
+              <option value="__new__">+ 새 반 직접 입력</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row" id="nsNewClassRow" style="display:none">
+          <div class="field"><label>새 반명 (엑셀과 동일하게)</label><input id="nsClass" placeholder="예: [DSC2]SU1/MWF/DSC2/H"></div>
           <div class="field"><label>담임명</label><input id="nsTeacher" placeholder="담임"></div>
         </div>
         <div class="form-row">
@@ -1089,6 +1116,14 @@ function renderStudentManagement(){
         }).join('') : '<div style="padding:14px;color:var(--ink-3);font-size:12.5px">이동 이력이 없습니다.</div>'}
       </div>
     </div>`;
+
+  // 반 선택 드롭다운: '새 반 직접 입력' 고르면 입력칸 표시
+  const csel = el('nsClassSelect');
+  if(csel){
+    csel.onchange = ()=>{
+      el('nsNewClassRow').style.display = csel.value==='__new__' ? 'flex' : 'none';
+    };
+  }
 }
 
 /* 수동 등록 학생 목록 (수정/삭제) — 학생관리에서 직접 추가한 신규생만 */
@@ -1392,10 +1427,22 @@ function importHistory(file, branchId, semId){
       const uniqTags = [...new Set(tags)];
       if(uniqTags.length===0){ skip++; return; } // 단계 태그 없는 상담은 완료율과 무관 → 미반영
       uniqTags.forEach(type=>{
-        const exists = db.counselingHistories.some(c=>
-          c.studentId===stu.id && c.branchId===branchId && c.semesterId===semId &&
-          c.date===date && c.content===content && c.type===type);
-        if(exists){ dup++; return; }
+        // 같은 학생·같은 학기·같은 단계의 기존 상담을 찾음
+        const prev = db.counselingHistories.find(c=>
+          c.studentId===stu.id && c.branchId===branchId &&
+          c.semesterId===semId && c.type===type);
+        if(prev){
+          // 내용·날짜가 완전히 같으면 변화 없음(중복)
+          if(prev.content===content && prev.date===date){ dup++; return; }
+          // 내용이 바뀌었으면 최신 내용으로 교체(갱신)
+          prev.content = content;
+          prev.date = date;
+          prev.counselor = String(r[idx.counselor]||'').trim();
+          prev.batchId = batchId;
+          added++;  // 갱신도 반영 건수로 카운트
+          return;
+        }
+        // 기존에 없던 단계면 새로 추가
         db.counselingHistories.push({id:uid('ch'),studentId:stu.id,branchId,semesterId:semId,
           date,type,content,counselor:String(r[idx.counselor]||'').trim(), batchId});
         added++;
@@ -1447,12 +1494,32 @@ function addNewStudent(){
   if(!enrollDate){ toast('입학일을 선택하세요','err'); return; }
   if(db.semesterRecords.some(r=>{const s=getStudent(r.studentId);return s&&s.code===code&&r.branchId===branchId&&r.semesterId===semId;})){
     toast('이미 등록된 회원코드입니다','err'); return; }
+
+  // 반 결정: 드롭다운에서 기존 반 선택 or 새 반 직접 입력
+  const csel = el('nsClassSelect');
+  const pick = csel ? csel.value : '';
+  let className, classLbl, teacher;
+  if(pick && pick!=='__new__'){
+    // 기존 반 선택 → 그 반의 정확한 className/라벨/담임 사용
+    const ref = activeRecordsOf(branchId, semId).find(r=>r.className===pick);
+    className = pick;
+    classLbl = (ref && ref.classLabel) || classLabel(pick) || pick;
+    teacher = (ref && ref.teacher) || '미배정';
+  } else if(pick==='__new__'){
+    const inClass = el('nsClass').value.trim();
+    if(!inClass){ toast('새 반명을 입력하세요','err'); return; }
+    className = inClass;
+    classLbl = classLabel(inClass) || inClass;
+    teacher = el('nsTeacher').value.trim() || '미배정';
+  } else {
+    toast('반을 선택하세요','err'); return;
+  }
+
   let stu=db.students.find(s=>s.code===code);
   if(!stu){ stu={id:uid('st'),code,name,school:el('nsSchool').value.trim(),grade:el('nsGrade').value.trim()};
     db.students.push(stu); }
-  const inClass = el('nsClass').value.trim()||'미배정';
   db.semesterRecords.push({id:uid('rec'),studentId:stu.id,branchId,semesterId:semId,
-    className:inClass,classLabel:inClass,teacher:el('nsTeacher').value.trim()||'미배정',
+    className,classLabel:classLbl,teacher,
     note:'신규생',targetType:'HCMC',status:'active',origin:'new',enrollDate});
   db.studentMovements.push({id:uid('mv'),studentId:stu.id,branchId,semesterId:semId,type:'new',date:enrollDate,memo:'수동 등록'});
   saveDB(); toast(`${name} 신규생 등록 완료`,'ok'); render();
