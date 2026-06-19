@@ -365,25 +365,30 @@ function withdrawMonth(rec){
    첫 달 월초 = 학기초부터 다닌 인원(enrollMonth==null).
    이후 달 월초 = 전달(월초+신규) − 전달 퇴원.
    월별 퇴원율 = 그 달 퇴원 ÷ (월초+신규). 평균퇴원율 = 월별 퇴원율의 단순평균. */
-function monthlyClosing(recs, months){
+function monthlyClosing(recs, months, activeMonths){
+  // activeMonths: 이 그룹(담임)이 담당하는 월 Set. 주면 그 외 달은 빈칸 처리.
   const startOfSem = recs.filter(r=> enrollMonth(r)==null).length;
   let carry = 0;
   const cells = [];
   const rates = [];
   months.forEach((m, idx)=>{
+    const active = !activeMonths || activeMonths.has(m);
     const newThis = recs.filter(r=> enrollMonth(r)===m).length;
     const monthStart = idx===0 ? startOfSem : carry;
     const baseNew = monthStart + newThis;
-    // 그 달 이탈 = 순수 퇴원 + 전출. 단 퇴원율엔 순수 퇴원만 반영.
-    const wdThis = recs.filter(r=> withdrawMonth(r)===m && !r.transfer).length;   // 순수 퇴원
-    const trThis = recs.filter(r=> withdrawMonth(r)===m && r.transfer).length;    // 전출
+    const wdThis = recs.filter(r=> withdrawMonth(r)===m && !r.transfer).length;
+    const trThis = recs.filter(r=> withdrawMonth(r)===m && r.transfer).length;
     const rate = baseNew>0 ? (wdThis/baseNew*100) : 0;
-    cells.push({ month:m, baseNew, withdraw:wdThis, transfer:trThis, rate });
-    if(baseNew>0) rates.push(rate);   // 인원 0인 달은 평균에서 제외
-    carry = baseNew - wdThis - trThis; // 다음 달 월초 = 이번달 - (퇴원+전출)
+    if(active){
+      cells.push({ month:m, baseNew, withdraw:wdThis, transfer:trThis, rate, blank:false });
+      if(baseNew>0) rates.push(rate);
+    } else {
+      cells.push({ month:m, baseNew:0, withdraw:0, transfer:0, rate:0, blank:true });
+    }
+    carry = baseNew - wdThis - trThis;
   });
-  const totWithdraw = cells.reduce((a,c)=>a+c.withdraw,0);
-  const totTransfer = cells.reduce((a,c)=>a+c.transfer,0);
+  const totWithdraw = cells.reduce((a,c)=>a+(c.blank?0:c.withdraw),0);
+  const totTransfer = cells.reduce((a,c)=>a+(c.blank?0:c.transfer),0);
   const avgRate = rates.length ? rates.reduce((a,c)=>a+c,0)/rates.length : 0;
   return { cells, totWithdraw, totTransfer, avgRate };
 }
@@ -1465,39 +1470,39 @@ function renderClosingHub(){
   el('content').innerHTML = html;
 }
 
-/* 월별 표 한 개 렌더 (강사별 또는 레벨별 공용) */
+/* 월별 표 한 개 렌더 (강사별/레벨별/학년별 공용). group에 activeMonths/subName 옵션 가능 */
 function closingTable(groups, months, firstColLabel){
-  // groups: [{name, recs}], months: [3,4,5]
   const monthNames = months.map(m=>m+'월');
-  // 합계용 누적
   const totals = { cells: months.map(()=>({baseNew:0,withdraw:0})), totWithdraw:0 };
   const bodyRows = groups.map((g, i)=>{
-    const r = monthlyClosing(g.recs, months);
-    r.cells.forEach((c,idx)=>{ totals.cells[idx].baseNew+=c.baseNew; totals.cells[idx].withdraw+=c.withdraw; });
+    const r = monthlyClosing(g.recs, months, g.activeMonths);
+    r.cells.forEach((c,idx)=>{ if(!c.blank){ totals.cells[idx].baseNew+=c.baseNew; totals.cells[idx].withdraw+=c.withdraw; } });
     totals.totWithdraw += r.totWithdraw;
-    const monthCells = r.cells.map(c=>`
-      <td class="num">${c.baseNew||'-'}</td>
+    const monthCells = r.cells.map(c=>{
+      if(c.blank) return `<td class="num blank">·</td><td class="num blank">·</td><td class="num blank">·</td>`;
+      return `<td class="num">${c.baseNew||'-'}</td>
       <td class="num">${c.withdraw||'-'}</td>
-      <td class="num"><span style="color:${c.rate>=10?'var(--neg)':c.rate>=5?'var(--warn)':'var(--ink-2)'}">${c.baseNew?c.rate.toFixed(1)+'%':'-'}</span></td>`).join('');
+      <td class="num"><span style="color:${c.rate>=10?'var(--neg)':c.rate>=5?'var(--warn)':'var(--ink-2)'}">${c.baseNew?c.rate.toFixed(1)+'%':'-'}</span></td>`;
+    }).join('');
+    const nameCell = g.subName
+      ? `<div class="nm">${esc(g.name)}</div><div style="font-size:10.5px;color:var(--ink-3)">${esc(g.subName)}</div>`
+      : `<span class="nm">${esc(g.name)}</span>`;
     return `<tr>
       <td class="cc">${i+1}</td>
-      <td class="nm">${esc(g.name)}</td>
+      <td>${nameCell}</td>
       ${monthCells}
       <td class="num" style="font-weight:700">${r.totWithdraw||'-'}</td>
       <td class="num"><span style="font-weight:700;color:${r.avgRate>=10?'var(--neg)':r.avgRate>=5?'var(--warn)':'var(--brand)'}">${r.avgRate?r.avgRate.toFixed(1)+'%':'-'}</span></td>
     </tr>`;
   }).join('');
-  // 합계 행
   const totalCells = totals.cells.map((c,idx)=>{
     const rate = c.baseNew>0 ? (c.withdraw/c.baseNew*100) : 0;
     return `<td class="num">${c.baseNew||'-'}</td><td class="num">${c.withdraw||'-'}</td>
       <td class="num">${c.baseNew?rate.toFixed(1)+'%':'-'}</td>`;
   }).join('');
-  // 합계의 평균퇴원율 = 각 그룹 avgRate 평균이 아니라 월별 합계퇴원율의 평균
   const totMonthRates = totals.cells.filter(c=>c.baseNew>0).map(c=> c.withdraw/c.baseNew*100);
   const totAvg = totMonthRates.length ? totMonthRates.reduce((a,c)=>a+c,0)/totMonthRates.length : 0;
 
-  // 헤더: 월마다 3칸(월초+신규/퇴원/퇴원율)
   const monthHeads = monthNames.map(mn=>`<th class="cc" colspan="3">${mn}</th>`).join('');
   const subHeads = months.map(()=>`<th class="cc">월초+신규</th><th class="cc">퇴원</th><th class="cc">퇴원율</th>`).join('');
 
@@ -1547,9 +1552,7 @@ function renderClosing(branchId){
   // 탭별 그룹 구성
   let groups, firstCol, note='';
   if(tab==='teacher'){
-    const m = new Map();
-    recs.forEach(r=>{ const t=r.teacher||'미배정'; if(!m.has(t)) m.set(t,[]); m.get(t).push(r); });
-    groups = [...m.entries()].map(([name,recs])=>({name,recs})).sort((a,b)=> b.recs.length-a.recs.length);
+    groups = teacherGroupsWithChanges(branchId, semId, recs, months);
     firstCol = '강사명';
   } else if(tab==='level'){
     const m = new Map();
@@ -1572,6 +1575,55 @@ function renderClosing(branchId){
       월초+신규 = 그 달 시작 인원 + 그 달 신규 · 퇴원율 = 퇴원 ÷ (월초+신규) · 평균퇴원율 = 월별 퇴원율의 평균 · 전출은 퇴원에서 제외됩니다.
     </div>`;
   el('content').innerHTML = html;
+}
+
+/* 담임 변경을 반영한 강사별 그룹 생성.
+   변경 없는 반: 현재 담임에 통째로 (모든 월 담당).
+   변경된 반: 변경 전/후 담임 두 그룹, 각자 담당 월만 표시.
+   변경월 책임: 변경일 15일 이전이면 그 달부터 새 담임, 16일 이후면 다음 달부터. */
+function teacherGroupsWithChanges(branchId, semId, recs, months){
+  const changes = (db.teacherChanges||[]).filter(c=>c.branchId===branchId && c.semesterId===semId);
+  const changeByClass = new Map();
+  changes.forEach(c=>{ changeByClass.set(c.className, c); });
+
+  const groupMap = new Map();
+  const ensure = (t)=>{ if(!groupMap.has(t)) groupMap.set(t, { name:t, recs:[], months:new Set() }); return groupMap.get(t); };
+
+  const byClass = new Map();
+  recs.forEach(r=>{ const k=r.className||'(미배정)'; if(!byClass.has(k)) byClass.set(k,[]); byClass.get(k).push(r); });
+
+  byClass.forEach((classRecs, className)=>{
+    const ch = changeByClass.get(className);
+    if(!ch){
+      const t = classRecs[0].teacher || '미배정';
+      const g = ensure(t);
+      classRecs.forEach(r=> g.recs.push(r));
+      months.forEach(m=> g.months.add(m));
+      return;
+    }
+    const chMonth = monthOfDate(ch.date);
+    const chDay = dayOfDate(ch.date) || 1;
+    const cutoff = (chDay<=15) ? chMonth : chMonth+1;
+    const beforeMonths = months.filter(m=> m < cutoff);
+    const afterMonths  = months.filter(m=> m >= cutoff);
+    if(beforeMonths.length){
+      const g = ensure(ch.fromTeacher||'미배정');
+      classRecs.forEach(r=> g.recs.push(r));
+      beforeMonths.forEach(m=> g.months.add(m));
+    }
+    if(afterMonths.length){
+      const g = ensure(ch.toTeacher||'미배정');
+      classRecs.forEach(r=> g.recs.push(r));
+      afterMonths.forEach(m=> g.months.add(m));
+    }
+  });
+
+  const allMonthsCount = months.length;
+  return [...groupMap.values()].map(g=>{
+    const isPartial = g.months.size < allMonthsCount;
+    const sub = isPartial ? ([...g.months].sort((a,b)=>a-b).map(m=>m+'월').join('·')+' 담당') : '';
+    return { name:g.name, recs:g.recs, activeMonths:g.months, subName: sub };
+  }).sort((a,b)=> b.recs.length - a.recs.length);
 }
 
 /* 일별 퇴원율 집계 — 월 선택 + 날짜별 표 */
@@ -1939,7 +1991,7 @@ function renderStudentManagement(){
               <span>${esc(label)}</span>
               <span class="tc-flow">${esc(c.fromTeacher)} → <b>${esc(c.toTeacher)}</b></span>
               <span class="tc-date num">${esc(c.date)}</span>
-              <button class="tc-del" onclick="deleteTeacherChange('${c.id}')">삭제</button>
+              <button class="tc-del" onclick="deleteTeacherChange('${c.id}')">변경 취소</button>
             </div>`;
           }).join('')}
         </div>`;
@@ -2526,10 +2578,26 @@ function changeTeacher(){
   });
 }
 function deleteTeacherChange(id){
-  const idx = db.teacherChanges.findIndex(c=>c.id===id);
-  if(idx<0) return;
-  db.teacherChanges.splice(idx,1);
-  saveDB(); toast('변경 이력 삭제','ok'); render();
+  const ch = db.teacherChanges.find(c=>c.id===id);
+  if(!ch) return;
+  const cls = (db.semesterRecords||[]).find(r=>r.className===ch.className && r.branchId===ch.branchId && r.semesterId===ch.semesterId);
+  const label = cls ? (cls.classLabel||ch.className) : ch.className;
+  openConfirm('담임 변경 취소',
+    `「${label}」의 담임 변경(${ch.fromTeacher} → ${ch.toTeacher})을 취소할까요?\n\n이 반의 담임이 이전 담임(${ch.fromTeacher})으로 되돌아갑니다.`,
+    ()=>{
+      // 이 반 학생들 담임을 변경 전으로 원복
+      (db.semesterRecords||[]).forEach(r=>{
+        if(r.className===ch.className && r.branchId===ch.branchId && r.semesterId===ch.semesterId){
+          r.teacher = ch.fromTeacher;
+        }
+      });
+      db.teacherChanges = db.teacherChanges.filter(c=>c.id!==id);
+      showSaving('변경 취소 중…');
+      saveDB().then(ok=>{ hideSaving(); closeModal();
+        toast(ok?`담임 변경 취소됨 · ${ch.toTeacher} → ${ch.fromTeacher}`:'저장 실패, 다시 시도하세요', ok?'ok':'err');
+        render();
+      });
+    }, {yesLabel:'변경 취소'});
 }
 
 /* ============================================================================
