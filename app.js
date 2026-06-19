@@ -124,9 +124,12 @@ async function loadDB(){
   await saveDB(); // ensureSemesters로 늘어난 학기 등 반영
 }
 
-/* 메모리 db를 서버에 동기화 — 직전 스냅샷과 비교해 바뀐 행만 upsert + 삭제된 행 delete */
+/* 메모리 db를 서버에 동기화 — 직전 스냅샷과 비교해 바뀐 행만 upsert + 삭제된 행 delete.
+   대량 데이터는 Supabase 요청 한도를 넘지 않게 잘게 나눠서 보냄(배치). */
 async function saveDB(){
-  if(!sb){ try{ initSupabase(); }catch(e){ console.error(e); return; } }
+  if(!sb){ try{ initSupabase(); }catch(e){ console.error(e); return false; } }
+  const CHUNK = 200;  // 한 번에 보낼 최대 행 수
+  let failed = false;
   try{
     for(const t of TABLES){
       const cur = db[t.key] || [];
@@ -142,17 +145,26 @@ async function saveDB(){
       // 삭제 대상: 이전엔 있었는데 지금 없는 행
       const delIds = [];
       for(const id of prevById.keys()){ if(!curById.has(id)) delIds.push(id); }
-      if(ups.length){
-        const { error } = await sb.from(t.table).upsert(ups);
-        if(error){ console.error('upsert fail', t.table, error); }
+      // upsert 배치 처리
+      for(let i=0;i<ups.length;i+=CHUNK){
+        const slice = ups.slice(i, i+CHUNK);
+        const { error } = await sb.from(t.table).upsert(slice);
+        if(error){ console.error('upsert fail', t.table, error); failed = true; }
       }
-      if(delIds.length){
-        const { error } = await sb.from(t.table).delete().in('id', delIds);
-        if(error){ console.error('delete fail', t.table, error); }
+      // delete 배치 처리
+      for(let i=0;i<delIds.length;i+=CHUNK){
+        const slice = delIds.slice(i, i+CHUNK);
+        const { error } = await sb.from(t.table).delete().in('id', slice);
+        if(error){ console.error('delete fail', t.table, error); failed = true; }
       }
     }
+    if(failed){
+      toast('일부 데이터 저장에 실패했습니다. 새로고침 후 다시 시도하세요.','err');
+      return false;  // 스냅샷 갱신 안 함 → 다음 저장에서 재시도
+    }
     dbSnapshot = JSON.parse(JSON.stringify(db));  // 동기화 완료 → 스냅샷 갱신
-  }catch(e){ console.error('saveDB error', e); toast('서버 저장 중 오류가 발생했습니다','err'); }
+    return true;
+  }catch(e){ console.error('saveDB error', e); toast('서버 저장 중 오류가 발생했습니다','err'); return false; }
 }
 
 /* 전체 초기화 — 학생/상담/명단/이동/배치 비우고 분원·계정·학기는 유지 */
@@ -624,17 +636,17 @@ function renderAdminDashboard(){
         <div>
           <div class="card-name">${esc(b.name)}
             ${b.id===bestId?'<span class="tag-best">최고</span>':b.id===worstId?'<span class="tag-worst">최저</span>':''}</div>
-          <div class="card-sub">재원 ${hc.active}명 · 신규 <b style="color:var(--brand)">${hc.newCnt}</b> · 퇴원 <b style="color:${wrColor}">${hc.withdraw}</b> <span style="color:${wrColor}">(${withdrawRate}%)</span></div>
+          <div class="card-sub">신규 <b style="color:var(--brand)">${hc.newCnt}</b> · 퇴원 <b style="color:${wrColor}">${hc.withdraw}</b> <span style="color:${wrColor}">(${withdrawRate}%)</span> · 상담률 <b style="color:${hasData?rateColor(rates.totalRate):'var(--ink-3)'}">${hasData?rates.totalRate+'%':'–'}</b></div>
         </div>
-        <div class="card-rate">
-          <div class="r num" style="color:${hasData?rateColor(rates.totalRate):'var(--ink-3)'}">${hasData?rates.totalRate+'%':'–'}</div>
-          <div class="rl">전체 상담률</div>
+        <div class="card-headcount">
+          <div class="hc-num num">${hc.active}</div>
+          <div class="hc-label">현재 재원생</div>
         </div>
       </div>
       <div class="mini-stats">
         <div class="mini-stat"><div class="v num">${hc.start}</div><div class="l">학기초</div></div>
-        <div class="mini-stat"><div class="v num">${hc.active}</div><div class="l">현재 재원</div></div>
-        <div class="mini-stat"><div class="v num">${hc.net>0?'+':''}${hc.net}</div><div class="l">순증감</div></div>
+        <div class="mini-stat"><div class="v num" style="color:var(--brand)">${hc.newCnt}</div><div class="l">신규</div></div>
+        <div class="mini-stat"><div class="v num" style="color:${hc.net>0?'var(--pos)':hc.net<0?'var(--neg)':'var(--ink-2)'}">${hc.net>0?'+':''}${hc.net}</div><div class="l">순증감</div></div>
       </div>
       ${hasData ? stageBars(rates) : `<div style="color:var(--ink-3);font-size:12.5px;padding:8px 0">아직 업로드된 데이터가 없습니다</div>`}
       <div class="card-foot">
