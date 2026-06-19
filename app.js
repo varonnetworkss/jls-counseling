@@ -1479,14 +1479,15 @@ function readTable(file, cb){
   }
 }
 
-/* 반 이름이 실제 수업반인지 (대괄호 레벨 코드가 있으면 수업반).
-   셔틀비/CHESS_Test 등은 대괄호가 없어 제외 대상 */
+/* 반 이름이 실제 수업반인지 (대괄호로 시작하면 수업반).
+   "[A2(1-3)]..." 처럼 대괄호 안에 괄호가 있어도 인식. 셔틀비 등 대괄호 없으면 제외 */
 function isRealClass(raw){
-  return !!String(raw||'').match(/\[([A-Za-z0-9]+)\]/);
+  return /^\s*\[/.test(String(raw||''));
 }
-/* 반 이름에서 레벨 코드만 추출: "[PA1]SU3/MWF/PA1(1)_E6/G" → "PA1" */
+/* 반 이름에서 레벨 코드만 추출 (괄호 안 내용은 무시).
+   "[PA1]SU3/..." → "PA1",  "[A2(1-3)]SM4/..." → "A2" */
 function classLevel(raw){
-  const m = String(raw||'').match(/\[([A-Za-z0-9]+)\]/);
+  const m = String(raw||'').match(/^\s*\[([A-Za-z]+[0-9]*)/);  // 대괄호 직후 영문+숫자 = 레벨
   return m ? m[1] : '';
 }
 /* 화면 표시용 깔끔한 라벨 생성.
