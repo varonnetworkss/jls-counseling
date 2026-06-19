@@ -387,6 +387,35 @@ function monthlyClosing(recs, months){
   const avgRate = rates.length ? rates.reduce((a,c)=>a+c,0)/rates.length : 0;
   return { cells, totWithdraw, totTransfer, avgRate };
 }
+/* 일별 집계 — 한 달의 날짜별 인원 추적 (퇴원율 집계표용).
+   월초인원 = 이 달 전부터 다니고 이 달엔 아직 안 나간 학생.
+   각 날짜: 신입(그날)/신입누계/기준학생수/퇴원(그날, 전출제외)/퇴원누계/퇴원율. */
+function daysInMonth(year, month){ return new Date(year, month, 0).getDate(); }
+function dayOfDate(s){ const m=String(s||'').match(/\d{4}-\d{1,2}-(\d{1,2})/); return m?parseInt(m[1],10):null; }
+function monthOfDate(s){ const m=String(s||'').match(/\d{4}-(\d{1,2})-\d{1,2}/); return m?parseInt(m[1],10):null; }
+function dailyClosing(recs, year, month){
+  const days = daysInMonth(year, month);
+  let startCount = 0;
+  recs.forEach(r=>{
+    const em = r.enrollDate ? monthOfDate(r.enrollDate) : null;
+    const wm = r.withdrawDate ? monthOfDate(r.withdrawDate) : null;
+    const enrolledBefore = (em==null || em<month);
+    const notLeftBefore  = (wm==null || wm>=month);
+    if(enrolledBefore && notLeftBefore) startCount++;
+  });
+  let running = startCount, newAcc = 0, wdAcc = 0;
+  const rows = [];
+  for(let d=1; d<=days; d++){
+    const newToday = recs.filter(r=> monthOfDate(r.enrollDate)===month && dayOfDate(r.enrollDate)===d).length;
+    const wdToday  = recs.filter(r=> monthOfDate(r.withdrawDate)===month && dayOfDate(r.withdrawDate)===d && !r.transfer).length;
+    running += newToday;
+    const base = running;
+    running -= wdToday;
+    newAcc += newToday; wdAcc += wdToday;
+    rows.push({ d, newToday, newAcc, base, wdToday, wdAcc, rate: base>0?(wdToday/base*100):0 });
+  }
+  return { startCount, rows, endCount:running };
+}
 /* 학생이 특정 단계 상담 대상인지 — 입학월 기준
    HC1/HC2: 신규·복귀생이면 입학월 상관없이 대상
    MC1/2/3: 입학월 이후의 MC만 대상 (예: 7월 입학 → MC1 제외, MC2·MC3 대상) */
@@ -507,7 +536,7 @@ function classesOf(branchId, semId, teacher){
 /* ============================================================================
    4. 앱 상태 & 라우터
    ============================================================================ */
-const state = { semId:null, route:null, branchSort:'active', teacherSort:'rate_desc', classSort:'rate_desc', allTeacherSort:'rate_desc', rosterTab:'new', closingTab:'teacher' };
+const state = { semId:null, route:null, branchSort:'active', teacherSort:'rate_desc', classSort:'rate_desc', allTeacherSort:'rate_desc', rosterTab:'new', closingTab:'teacher', closingMonth:null };
 
 const el = id => document.getElementById(id);
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -1501,6 +1530,19 @@ function renderClosing(branchId){
   else crumbs([{label:'인원마감표'}]);
 
   const recs = recordsOf(branchId, semId);
+  const tabBtn = (key,label)=>`<button class="sb-btn ${tab===key?'on':''}" onclick="setClosingTab('${key}')">${label}</button>`;
+  const tabBar = `<div class="sort-bar" style="margin-bottom:16px">
+      ${tabBtn('teacher','강사별')}${tabBtn('level','레벨별')}${tabBtn('grade','학년별')}${tabBtn('daily','일별')}
+    </div>`;
+  const headHtml = `
+    ${isAdmin?backLink('인원마감표','closing'):''}
+    <div class="page-head">
+      <h2>${esc(b.name)} 인원마감표</h2>
+      <div class="sub">${esc(db.semesters.find(s=>s.id===semId).name)} · 월별 퇴원현황 (월초+신규 / 퇴원 / 퇴원율)</div>
+    </div>${tabBar}`;
+
+  // 일별 탭은 별도 렌더
+  if(tab==='daily'){ renderClosingDaily(branchId, headHtml); return; }
 
   // 탭별 그룹 구성
   let groups, firstCol, note='';
@@ -1510,12 +1552,11 @@ function renderClosing(branchId){
     groups = [...m.entries()].map(([name,recs])=>({name,recs})).sort((a,b)=> b.recs.length-a.recs.length);
     firstCol = '강사명';
   } else if(tab==='level'){
-    // 레벨(수업) 기준 — CHESS/ACE 등은 항상 반 레벨로 카운트 (학년 아님)
     const m = new Map();
     recs.forEach(r=>{ const lv=classLevel(r.className||'')||'기타'; if(!m.has(lv)) m.set(lv,[]); m.get(lv).push(r); });
     groups = [...m.entries()].map(([name,recs])=>({name,recs})).sort((a,b)=> a.name.localeCompare(b.name));
     firstCol = '레벨';
-  } else { // grade — 진짜 학년 기준
+  } else { // grade
     const m = new Map();
     recs.forEach(r=>{ const s=getStudent(r.studentId); const gk=gradeKey(s)||'미상'; if(!m.has(gk)) m.set(gk,[]); m.get(gk).push(r); });
     groups = [...m.entries()].map(([name,recs])=>({name,recs}))
@@ -1524,19 +1565,7 @@ function renderClosing(branchId){
     note = '※ 학년 기준 집계입니다. 초5 중 일부는 레벨이 높아 CHESS가 아닌 ACE 수업을 듣고 있어, 강사별·레벨별 표의 숫자와 다를 수 있습니다.';
   }
 
-  const tabBtn = (key,label)=>`<button class="sb-btn ${tab===key?'on':''}" onclick="setClosingTab('${key}')">${label}</button>`;
-
-  let html = `
-    ${isAdmin?backLink('인원마감표','closing'):''}
-    <div class="page-head">
-      <h2>${esc(b.name)} 인원마감표</h2>
-      <div class="sub">${esc(db.semesters.find(s=>s.id===semId).name)} · 월별 퇴원현황 (월초+신규 / 퇴원 / 퇴원율)</div>
-    </div>
-    <div class="sort-bar" style="margin-bottom:16px">
-      ${tabBtn('teacher','강사별')}
-      ${tabBtn('level','레벨별')}
-      ${tabBtn('grade','학년별')}
-    </div>
+  let html = headHtml + `
     ${closingTable(groups, months, firstCol)}
     ${note?`<div class="closing-note">${esc(note)}</div>`:''}
     <div style="margin-top:12px;font-size:12px;color:var(--ink-3)">
@@ -1544,7 +1573,64 @@ function renderClosing(branchId){
     </div>`;
   el('content').innerHTML = html;
 }
+
+/* 일별 퇴원율 집계 — 월 선택 + 날짜별 표 */
+function renderClosingDaily(branchId, headHtml){
+  const semId = state.semId;
+  const months = semesterMonths(semId);
+  const month = state.closingMonth || months[0];
+  const m = String(semId).match(/sem_(\d+)_/);
+  let year = m ? parseInt(m[1],10) : new Date().getFullYear();
+  // 겨울학기 1,2월은 다음 해
+  if(month<=2 && months.includes(12)) year = year; // sem id의 연도가 이미 보정돼 있음
+  const recs = recordsOf(branchId, semId);
+  const data = dailyClosing(recs, year, month);
+
+  const monthBtns = months.map(mo=>`<button class="sb-btn ${month===mo?'on':''}" onclick="setClosingMonth(${mo})">${mo}월</button>`).join('');
+
+  const rows = data.rows.map(r=>{
+    const wk = ['일','월','화','수','목','금','토'][new Date(year, month-1, r.d).getDay()];
+    return `<tr>
+      <td class="cc">${month}/${r.d}</td>
+      <td class="cc" style="color:var(--ink-3)">${wk}</td>
+      <td class="num">${r.newToday||'-'}</td>
+      <td class="num">${r.newAcc||'-'}</td>
+      <td class="num" style="font-weight:700">${r.base}</td>
+      <td class="num">${r.wdToday?`<span style="color:var(--neg)">${r.wdToday}</span>`:'-'}</td>
+      <td class="num">${r.wdAcc||'-'}</td>
+      <td class="num">${r.wdToday?`<span style="color:${r.rate>=2?'var(--neg)':'var(--ink-2)'}">${r.rate.toFixed(2)}%</span>`:'-'}</td>
+    </tr>`;
+  }).join('');
+
+  const monthWd = data.rows.reduce((a,c)=>a+c.wdToday,0);
+  const monthNew = data.rows.reduce((a,c)=>a+c.newToday,0);
+  const monthRate = data.startCount>0 ? (monthWd/(data.startCount+monthNew)*100) : 0;
+
+  let html = headHtml + `
+    <div class="sort-bar" style="margin-bottom:14px">${monthBtns}</div>
+    <div class="kpi-row c4">
+      ${kpiCard('월초 인원', data.startCount, {unit:'명'})}
+      ${kpiCard('이달 신입(누계)', monthNew, {unit:'명', accent:true})}
+      ${kpiCard('이달 퇴원(누계)', monthWd, {unit:'명'})}
+      ${kpiCard('말일 현원', data.endCount, {unit:'명'})}
+    </div>
+    <div class="table-wrap"><div class="table-scroll">
+      <table class="rank-table closing-table">
+        <thead><tr>
+          <th class="cc">날짜</th><th class="cc">요일</th>
+          <th class="cc">신입</th><th class="cc">신입누계</th><th class="cc">기준학생수</th>
+          <th class="cc">퇴원</th><th class="cc">퇴원누계</th><th class="cc">퇴원율</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div></div>
+    <div style="margin-top:12px;font-size:12px;color:var(--ink-3)">
+      기준학생수 = 그날 신입까지 더한 인원 · 퇴원율 = 그날 퇴원 ÷ 기준학생수 · 전출은 퇴원에서 제외됩니다.
+    </div>`;
+  el('content').innerHTML = html;
+}
 function setClosingTab(tab){ state.closingTab=tab; render(); }
+function setClosingMonth(mo){ state.closingMonth=mo; render(); }
 
 /* ============================================================================
    15. 분원 — 데이터관리 (엑셀 업로드 전용)
