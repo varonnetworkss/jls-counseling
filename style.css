@@ -496,3 +496,11 @@ table.rank-table tbody tr:last-child td{border-bottom:none}
 /* 인원마감 담임변경 — 갈라진 달(노랑), 담당 안 함(빨강) */
 .closing-table .num.cell-split{background:#fff7d6}
 .closing-table .num.cell-na{background:var(--neg-soft);color:var(--neg)}
+
+/* 신규·퇴원 명단 필터 */
+.roster-filter{display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+.roster-filter select,.roster-filter input{height:36px;border:1px solid var(--line);border-radius:var(--radius-sm);
+  background:var(--surface-2);padding:0 11px;font-size:13px;color:var(--ink)}
+.roster-filter input{flex:1;min-width:160px}
+.roster-filter .rf-clear{height:36px;border:none;background:var(--brand-soft);color:var(--brand);
+  font-size:12px;font-weight:700;padding:0 12px;border-radius:var(--radius-sm);cursor:pointer}

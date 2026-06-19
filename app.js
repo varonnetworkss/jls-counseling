@@ -582,7 +582,7 @@ function classesOf(branchId, semId, teacher){
 /* ============================================================================
    4. 앱 상태 & 라우터
    ============================================================================ */
-const state = { semId:null, route:null, branchSort:'active', teacherSort:'rate_desc', classSort:'rate_desc', allTeacherSort:'rate_desc', rosterTab:'new', closingTab:'teacher', closingMonth:null };
+const state = { semId:null, route:null, branchSort:'active', teacherSort:'rate_desc', classSort:'rate_desc', allTeacherSort:'rate_desc', rosterTab:'new', closingTab:'teacher', closingMonth:null, rosterTeacher:'', rosterQuery:'' };
 
 const el = id => document.getElementById(id);
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -1441,7 +1441,15 @@ function renderRosterDetail(branchId){
   }
 
   const c = rosterCount(branchId, semId);
-  const rows = rosterRows(branchId, semId, tab);
+  let rows = rosterRows(branchId, semId, tab);
+
+  // 담임 목록 (필터 드롭다운용)
+  const teacherSet = [...new Set(rows.map(r=>r.teacher).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko'));
+
+  // 필터 적용 — 담임은 리렌더로, 검색은 DOM에서(아래 표에 data속성)
+  const fTeacher = state.rosterTeacher||'';
+  const fQuery = (state.rosterQuery||'').trim().toLowerCase();
+  if(fTeacher) rows = rows.filter(r=>r.teacher===fTeacher);
 
   let html = `
     ${isAdmin?backLink('신규·퇴원 명단','roster'):''}
@@ -1449,38 +1457,61 @@ function renderRosterDetail(branchId){
       <h2>${esc(b.name)} 신규·퇴원 명단</h2>
       <div class="sub">${esc(db.semesters.find(s=>s.id===semId).name)}</div>
     </div>
-    <div class="sort-bar" style="margin-bottom:16px">
+    <div class="sort-bar" style="margin-bottom:12px">
       <button class="sb-btn ${tab==='new'?'on':''}" onclick="setRosterTab('new')">신규생 ${c.newCnt}</button>
       <button class="sb-btn ${tab==='withdraw'?'on':''}" onclick="setRosterTab('withdraw')">퇴원생 ${c.wdCnt}</button>
+    </div>
+    <div class="roster-filter">
+      <select onchange="setRosterTeacher(this.value)">
+        <option value="">담임 전체</option>
+        ${teacherSet.map(t=>`<option value="${esc(t)}" ${fTeacher===t?'selected':''}>${esc(t)}</option>`).join('')}
+      </select>
+      <input placeholder="이름·회원코드 검색" value="${esc(state.rosterQuery||'')}" oninput="setRosterQuery(this.value)">
+      ${(fTeacher||fQuery)?`<button class="rf-clear" onclick="clearRosterFilter()">필터 해제</button>`:''}
     </div>`;
 
   if(rows.length===0){
     html += emptyState(tab==='new'?'신규생이 없습니다':'퇴원생이 없습니다', '');
   } else {
     html += `<div class="table-wrap"><div class="table-scroll">
-      <table class="rank-table">
+      <table class="rank-table" id="rosterTable">
         <thead><tr>
           <th>학생명</th><th>회원코드</th><th>반</th><th>담임</th>
-          <th>학교/학년</th><th>${tab==='new'?'입학일':'퇴원일'}</th>${tab==='withdraw'?'<th>사유</th>':''}
+          <th>학교/학년</th><th>${tab==='new'?'입학일':'퇴원일'}</th><th>${tab==='new'?'메모':'사유'}</th>
         </tr></thead>
         <tbody>
-        ${rows.map(r=>`<tr>
+        ${rows.map(r=>{
+          const memoShown = (r.memo && r.memo!=='수동 등록' && r.memo!=='퇴원 처리') ? r.memo : '';
+          return `<tr data-name="${esc(r.name)}" data-code="${esc(r.code)}">
           <td class="nm">${esc(r.name)}</td>
           <td><span class="code-chip">${esc(r.code)}</span></td>
           <td>${esc(r.classLabel)}</td>
           <td>${esc(r.teacher)}</td>
           <td style="color:var(--ink-3);font-size:12px">${esc(r.school)} ${esc(r.grade)}${r.grade?'학년':''}</td>
           <td class="num">${esc(r.date)}</td>
-          ${tab==='withdraw'?`<td style="color:var(--ink-3);font-size:12px">${esc(r.memo)}</td>`:''}
-        </tr>`).join('')}
+          <td style="color:var(--ink-3);font-size:12px">${esc(memoShown)}</td>
+        </tr>`;}).join('')}
         </tbody>
       </table>
     </div></div>
-    <div style="margin-top:10px;font-size:12px;color:var(--ink-3)">총 ${rows.length}명 · 최근 순</div>`;
+    <div style="margin-top:10px;font-size:12px;color:var(--ink-3)">총 ${rows.length}명${fTeacher?` · ${esc(fTeacher)} 담임`:''} · 최근 순</div>`;
   }
   el('content').innerHTML = html;
+  if(state.rosterQuery) setRosterQuery(state.rosterQuery);
 }
-function setRosterTab(tab){ state.rosterTab=tab; render(); }
+function setRosterTab(tab){ state.rosterTab=tab; state.rosterTeacher=''; state.rosterQuery=''; render(); }
+function setRosterTeacher(v){ state.rosterTeacher=v; render(); }
+function clearRosterFilter(){ state.rosterTeacher=''; state.rosterQuery=''; render(); }
+/* 검색은 전체 리렌더 없이 표 행만 즉시 필터(입력 포커스 유지) */
+function setRosterQuery(v){
+  state.rosterQuery=v;
+  const q=(v||'').trim().toLowerCase();
+  document.querySelectorAll('#rosterTable tbody tr').forEach(tr=>{
+    const name=(tr.dataset.name||'').toLowerCase();
+    const code=(tr.dataset.code||'').toLowerCase();
+    tr.style.display = (!q || name.includes(q) || code.includes(q)) ? '' : 'none';
+  });
+}
 
 /* ============================================================================
    14-3. 인원마감표 (강사별·레벨별 월별 퇴원현황)
@@ -1976,6 +2007,7 @@ function renderStudentManagement(){
         </div>
         <div class="form-row">
           <div class="field"><label>입학일 (등원일)</label><input id="nsDate" type="date"></div>
+          <div class="field"><label>메모 (선택)</label><input id="nsMemo" placeholder="예: 운정1에서 전입"></div>
         </div>
         <button class="btn primary" style="width:100%" onclick="addNewStudent()">신규생 등록</button>
       </div>
@@ -2523,7 +2555,8 @@ function addNewStudent(){
   db.semesterRecords.push({id:uid('rec'),studentId:stu.id,branchId,semesterId:semId,
     className,classLabel:classLbl,teacher,
     note:'신규생',targetType:'HCMC',status:'active',origin:'new',enrollDate});
-  db.studentMovements.push({id:uid('mv'),studentId:stu.id,branchId,semesterId:semId,type:'new',date:enrollDate,memo:'수동 등록'});
+  const nsMemo = (el('nsMemo')?el('nsMemo').value.trim():'') || '수동 등록';
+  db.studentMovements.push({id:uid('mv'),studentId:stu.id,branchId,semesterId:semId,type:'new',date:enrollDate,memo:nsMemo});
   saveDB(); toast(`${name} 신규생 등록 완료`,'ok'); render();
 }
 
