@@ -1511,19 +1511,15 @@ function renderClosingHub(){
   el('content').innerHTML = html;
 }
 
-/* 월별 표 한 개 렌더 (강사별/레벨별/학년별 공용). group에 activeMonths/subName 옵션 가능 */
-function closingTable(groups, months, firstColLabel){
+/* 월별 표 한 개 렌더 (강사별/레벨별/학년별 공용).
+   totalRecs를 주면 합계는 그 원본 전체에서 한 번씩만 계산(담임변경 중복 방지). */
+function closingTable(groups, months, firstColLabel, totalRecs){
   const monthNames = months.map(m=>m+'월');
-  const totals = { cells: months.map(()=>({baseNew:0,withdraw:0})), totWithdraw:0 };
   const bodyRows = groups.map((g, i)=>{
     const r = monthlyClosing(g.recs, months, g.activeMonths, g.splits);
-    r.cells.forEach((c,idx)=>{ if(!c.blank){ totals.cells[idx].baseNew+=c.baseNew; totals.cells[idx].withdraw+=c.withdraw; } });
-    totals.totWithdraw += r.totWithdraw;
     const splitMonths = new Set((g.splits||[]).map(s=>s.month));
     const monthCells = r.cells.map(c=>{
-      // 담당 안 하는 달 → 빨강 칸
       if(c.blank) return `<td class="num cell-na">-</td><td class="num cell-na">-</td><td class="num cell-na">-</td>`;
-      // 변경이 일어난(갈라진) 달 → 노랑 칸
       const cls = splitMonths.has(c.month) ? ' cell-split' : '';
       return `<td class="num${cls}">${c.baseNew||'-'}</td>
       <td class="num${cls}">${c.withdraw||'-'}</td>
@@ -1538,13 +1534,16 @@ function closingTable(groups, months, firstColLabel){
       <td class="num"><span style="font-weight:700;color:${r.avgRate>=10?'var(--neg)':r.avgRate>=5?'var(--warn)':'var(--brand)'}">${r.avgRate?r.avgRate.toFixed(1)+'%':'-'}</span></td>
     </tr>`;
   }).join('');
-  const totalCells = totals.cells.map((c,idx)=>{
-    const rate = c.baseNew>0 ? (c.withdraw/c.baseNew*100) : 0;
+
+  // 합계 — 원본 전체에서 한 번씩 계산 (담임변경으로 학생이 두 줄에 중복돼도 1회만)
+  const baseForTotal = totalRecs || groups.reduce((acc,g)=>acc.concat(g.recs),[]);
+  const totR = monthlyClosing(baseForTotal, months);
+  const totalCells = totR.cells.map(c=>{
     return `<td class="num">${c.baseNew||'-'}</td><td class="num">${c.withdraw||'-'}</td>
-      <td class="num">${c.baseNew?rate.toFixed(1)+'%':'-'}</td>`;
+      <td class="num">${c.baseNew?c.rate.toFixed(1)+'%':'-'}</td>`;
   }).join('');
-  const totMonthRates = totals.cells.filter(c=>c.baseNew>0).map(c=> c.withdraw/c.baseNew*100);
-  const totAvg = totMonthRates.length ? totMonthRates.reduce((a,c)=>a+c,0)/totMonthRates.length : 0;
+  const totAvg = totR.avgRate;
+  const totWithdrawSum = totR.totWithdraw;
 
   const monthHeads = monthNames.map(mn=>`<th class="cc" colspan="3">${mn}</th>`).join('');
   const subHeads = months.map(()=>`<th class="cc">월초+신규</th><th class="cc">퇴원</th><th class="cc">퇴원율</th>`).join('');
@@ -1559,7 +1558,7 @@ function closingTable(groups, months, firstColLabel){
       <tbody>${bodyRows}</tbody>
       <tfoot>
         <tr class="closing-total"><td class="cc"></td><td class="nm">합계</td>${totalCells}
-          <td class="num" style="font-weight:800">${totals.totWithdraw}</td>
+          <td class="num" style="font-weight:800">${totWithdrawSum}</td>
           <td class="num" style="font-weight:800">${totAvg.toFixed(1)}%</td></tr>
       </tfoot>
     </table>
@@ -1612,7 +1611,7 @@ function renderClosing(branchId){
   }
 
   let html = headHtml + `
-    ${closingTable(groups, months, firstCol)}
+    ${closingTable(groups, months, firstCol, recs)}
     ${note?`<div class="closing-note">${esc(note)}</div>`:''}
     <div style="margin-top:12px;font-size:12px;color:var(--ink-3)">
       월초+신규 = 그 달 시작 인원 + 그 달 신규 · 퇴원율 = 퇴원 ÷ (월초+신규) · 평균퇴원율 = 월별 퇴원율의 평균 · 전출은 퇴원에서 제외됩니다.
