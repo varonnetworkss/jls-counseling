@@ -112,6 +112,10 @@ a{color:inherit;text-decoration:none}
 .crumbs .c-cur{color:var(--ink);font-weight:400}
 .topbar-spacer{flex:1}
 .sem-pick{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-2)}
+.sem-del{display:none;align-items:center;justify-content:center;width:30px;height:30px;
+  border:1px solid var(--line);border-radius:9px;background:var(--surface);cursor:pointer;
+  font-size:13px;transition:.14s;padding:0}
+.sem-del:hover{background:var(--neg-soft);border-color:var(--neg-soft)}
 .sem-pick select{height:32px;border:1px solid var(--line);border-radius:var(--radius-sm);
   padding:0 8px;background:var(--surface-2);color:var(--ink);font-weight:400}
 .content{padding:24px;max-width:1320px;width:100%}

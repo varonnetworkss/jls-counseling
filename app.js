@@ -48,6 +48,44 @@ function addNextSemester(){
   toast(`${next.name} 추가됨 — 이제 이 학기 명단을 업로드하세요`,'ok');
   render();
 }
+
+/* 학기 삭제 — 현재(오늘 기준) 학기는 삭제 불가, 데이터 있으면 강력 경고 */
+function confirmDeleteSemester(){
+  const semId = state.semId;
+  const sem = db.semesters.find(s=>s.id===semId);
+  if(!sem){ return; }
+  const cur = currentSemester();
+  if(semId===cur.id){
+    toast('현재 진행 중인 학기는 삭제할 수 없습니다','err'); return;
+  }
+  if(db.semesters.length<=1){
+    toast('학기가 하나뿐이라 삭제할 수 없습니다','err'); return;
+  }
+  // 이 학기에 묶인 데이터 양
+  const stuCnt = (db.semesterRecords||[]).filter(r=>r.semesterId===semId).length;
+  const hisCnt = (db.counselingHistories||[]).filter(c=>c.semesterId===semId).length;
+  const hasData = stuCnt>0 || hisCnt>0;
+  const msg = hasData
+    ? `정말 「${sem.name}」을(를) 삭제할까요?\n\n이 학기의 학생 ${stuCnt}명, 상담이력 ${hisCnt}건, 그 밖의 모든 기록이 영구히 사라집니다. 복구할 수 없습니다.`
+    : `「${sem.name}」을(를) 삭제할까요?\n\n이 학기엔 아직 데이터가 없습니다. 복구할 수 없습니다.`;
+  openConfirm('학기 삭제', msg, ()=>{
+    // 이 학기에 속한 모든 데이터 제거
+    db.semesterRecords   = (db.semesterRecords||[]).filter(r=>r.semesterId!==semId);
+    db.counselingHistories = (db.counselingHistories||[]).filter(c=>c.semesterId!==semId);
+    db.studentMovements  = (db.studentMovements||[]).filter(m=>m.semesterId!==semId);
+    db.uploadBatches     = (db.uploadBatches||[]).filter(x=>x.semesterId!==semId);
+    db.teacherChanges    = (db.teacherChanges||[]).filter(t=>t.semesterId!==semId);
+    db.semesters         = db.semesters.filter(s=>s.id!==semId);
+    // 현재 학기로 전환
+    state.semId = db.semesters.some(s=>s.id===cur.id) ? cur.id : (db.semesters[0]?db.semesters[0].id:null);
+    showSaving('학기 삭제 중…');
+    saveDB().then(ok=>{
+      hideSaving(); closeModal();
+      toast(ok?`${sem.name} 삭제 완료`:'저장 실패, 다시 시도하세요', ok?'ok':'err');
+      buildShell(); render();
+    });
+  }, {yesLabel:'영구 삭제'});
+}
 /* 현재 학기에서 n학기 전 */
 function semesterBack(base, n){
   const order = ['spring','summer','fall','winter']; // 봄→여름→가을→겨울
@@ -553,6 +591,12 @@ function buildShell(){
     if(sel.value==='__add_next__'){ addNextSemester(); return; }
     state.semId = sel.value; render();
   };
+  // 학기 삭제 버튼 (관리자만 노출)
+  const delBtn = el('semDelBtn');
+  if(delBtn){
+    delBtn.style.display = (session.role==='admin') ? 'inline-flex' : 'none';
+    delBtn.onclick = ()=> confirmDeleteSemester();
+  }
 
   // 네비
   const nav = el('sbNav');
