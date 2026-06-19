@@ -378,7 +378,28 @@ function rateColor(r){
 }
 function toast(msg, kind){
   const t = el('toast'); t.textContent = msg; t.className = 'show'+(kind?' '+kind:'');
-  clearTimeout(t._tm); t._tm = setTimeout(()=> t.className='', 2400);
+  clearTimeout(t._tm); t._tm = setTimeout(()=> t.className='', kind==='err'?5000:2800);
+}
+
+/* 저장 중 전체 화면 오버레이 — 저장 끝나기 전 새로고침/조작 방지 */
+function showSaving(msg){
+  let ov = el('savingOverlay');
+  if(!ov){
+    ov = document.createElement('div');
+    ov.id = 'savingOverlay';
+    ov.innerHTML = `<div class="saving-box"><div class="saving-spin"></div><div class="saving-msg"></div>
+      <div class="saving-warn">저장이 끝날 때까지 새로고침하거나 창을 닫지 마세요</div></div>`;
+    document.body.appendChild(ov);
+  }
+  ov.querySelector('.saving-msg').textContent = msg || '저장 중…';
+  ov.classList.add('on');
+  // 저장 중 페이지 이탈 경고
+  window.onbeforeunload = ()=> '저장 중입니다. 지금 나가면 데이터가 사라질 수 있습니다.';
+}
+function hideSaving(){
+  const ov = el('savingOverlay');
+  if(ov) ov.classList.remove('on');
+  window.onbeforeunload = null;
 }
 
 /* 해시 라우트: #/admin , #/admin/branch/:bid , #/branch ,
@@ -1586,8 +1607,14 @@ function importRoster(file, branchId, semId){
         updated++;
       }
     });
-    await saveDB();
-    toast(`전체명단 반영 · 신규 ${added}, 갱신 ${updated}${excluded?`, 제외 ${excluded}`:''}`,'ok');
+    showSaving(`전체명단 저장 중… (${added+updated}명, 잠시만요)`);
+    const ok = await saveDB();
+    hideSaving();
+    if(ok){
+      toast(`✅ 저장 완료 · 신규 ${added}, 갱신 ${updated}${excluded?`, 제외 ${excluded}`:''}`,'ok');
+    } else {
+      toast('❌ 저장 실패 — 다시 업로드해 주세요 (데이터가 서버에 저장되지 않았습니다)','err');
+    }
     render();
   });
 }
@@ -1671,11 +1698,17 @@ function importHistory(file, branchId, semId){
         added, dup, skip
       });
     }
-    await saveDB();
+    showSaving(`상담이력 저장 중… (${added}건, 잠시만요)`);
+    const ok = await saveDB();
+    hideSaving();
     let extra = '';
     if(prevSem>0) extra += `, 이전학기 제외 ${prevSem}`;
     if(misTagCnt>0) extra += `, 오기재 의심 ${misTagCnt}`;
-    toast(`상담이력 누적 · 추가 ${added}, 중복 ${dup}, 미매칭 ${skip}${extra}`,'ok');
+    if(ok){
+      toast(`✅ 저장 완료 · 추가 ${added}, 중복 ${dup}, 미매칭 ${skip}${extra}`,'ok');
+    } else {
+      toast('❌ 저장 실패 — 다시 업로드해 주세요 (서버에 저장되지 않았습니다)','err');
+    }
     render();
   });
 }
