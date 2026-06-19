@@ -49,40 +49,35 @@ function addNextSemester(){
   render();
 }
 
-/* 학기 삭제 — 현재(오늘 기준) 학기는 삭제 불가, 데이터 있으면 강력 경고 */
+/* 학기 데이터 비우기 — 분원 계정이 '자기 분원의 그 학기 데이터'만 삭제.
+   학기 자체와 다른 분원 데이터는 그대로 둠. */
 function confirmDeleteSemester(){
   const semId = state.semId;
   const sem = db.semesters.find(s=>s.id===semId);
-  if(!sem){ return; }
-  const cur = currentSemester();
-  if(semId===cur.id){
-    toast('현재 진행 중인 학기는 삭제할 수 없습니다','err'); return;
+  if(!sem) return;
+  const branchId = session.branchId;
+  if(!branchId){ toast('분원 계정만 삭제할 수 있습니다','err'); return; }
+  const b = getBranch(branchId);
+
+  // 이 분원·학기에 묶인 데이터 양
+  const stuCnt = (db.semesterRecords||[]).filter(r=>r.semesterId===semId && r.branchId===branchId).length;
+  const hisCnt = (db.counselingHistories||[]).filter(c=>c.semesterId===semId && c.branchId===branchId).length;
+  if(stuCnt===0 && hisCnt===0){
+    toast('이 학기엔 삭제할 데이터가 없습니다','err'); return;
   }
-  if(db.semesters.length<=1){
-    toast('학기가 하나뿐이라 삭제할 수 없습니다','err'); return;
-  }
-  // 이 학기에 묶인 데이터 양
-  const stuCnt = (db.semesterRecords||[]).filter(r=>r.semesterId===semId).length;
-  const hisCnt = (db.counselingHistories||[]).filter(c=>c.semesterId===semId).length;
-  const hasData = stuCnt>0 || hisCnt>0;
-  const msg = hasData
-    ? `정말 「${sem.name}」을(를) 삭제할까요?\n\n이 학기의 학생 ${stuCnt}명, 상담이력 ${hisCnt}건, 그 밖의 모든 기록이 영구히 사라집니다. 복구할 수 없습니다.`
-    : `「${sem.name}」을(를) 삭제할까요?\n\n이 학기엔 아직 데이터가 없습니다. 복구할 수 없습니다.`;
-  openConfirm('학기 삭제', msg, ()=>{
-    // 이 학기에 속한 모든 데이터 제거
-    db.semesterRecords   = (db.semesterRecords||[]).filter(r=>r.semesterId!==semId);
-    db.counselingHistories = (db.counselingHistories||[]).filter(c=>c.semesterId!==semId);
-    db.studentMovements  = (db.studentMovements||[]).filter(m=>m.semesterId!==semId);
-    db.uploadBatches     = (db.uploadBatches||[]).filter(x=>x.semesterId!==semId);
-    db.teacherChanges    = (db.teacherChanges||[]).filter(t=>t.semesterId!==semId);
-    db.semesters         = db.semesters.filter(s=>s.id!==semId);
-    // 현재 학기로 전환
-    state.semId = db.semesters.some(s=>s.id===cur.id) ? cur.id : (db.semesters[0]?db.semesters[0].id:null);
-    showSaving('학기 삭제 중…');
+  const msg = `정말 「${b?b.name:''} · ${sem.name}」 데이터를 삭제할까요?\n\n이 분원의 이 학기 학생 ${stuCnt}명, 상담이력 ${hisCnt}건, 신규/퇴원·담임변경 기록이 모두 사라집니다. 다른 분원과 다른 학기는 영향받지 않습니다.\n\n복구할 수 없습니다.`;
+  openConfirm('학기 데이터 삭제', msg, ()=>{
+    const keepBranchSem = (arr, key='branchId')=> (arr||[]).filter(x=> !(x.semesterId===semId && x[key]===branchId));
+    db.semesterRecords     = keepBranchSem(db.semesterRecords);
+    db.counselingHistories = keepBranchSem(db.counselingHistories);
+    db.studentMovements    = keepBranchSem(db.studentMovements);
+    db.uploadBatches       = keepBranchSem(db.uploadBatches);
+    db.teacherChanges      = keepBranchSem(db.teacherChanges);
+    showSaving('학기 데이터 삭제 중…');
     saveDB().then(ok=>{
       hideSaving(); closeModal();
-      toast(ok?`${sem.name} 삭제 완료`:'저장 실패, 다시 시도하세요', ok?'ok':'err');
-      buildShell(); render();
+      toast(ok?`${sem.name} 데이터 삭제 완료`:'저장 실패, 다시 시도하세요', ok?'ok':'err');
+      render();
     });
   }, {yesLabel:'영구 삭제'});
 }
@@ -582,19 +577,20 @@ function buildShell(){
   el('sbUserName').textContent = isAdmin ? '관리자' : (branch?branch.name:session.username);
   el('sbUserRole').textContent = session.username;
 
-  // 학기 선택 (+ 다음 학기 수동 추가 옵션)
+  // 학기 선택 — 분원 계정만 '다음 학기 추가' 옵션 노출 (관리자는 보기 전용)
   const sel = el('semSelect');
+  const isBranch = session.role==='branch';
   sel.innerHTML = db.semesters.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('')
-    + `<option value="__add_next__">+ 다음 학기 추가…</option>`;
+    + (isBranch ? `<option value="__add_next__">+ 다음 학기 추가…</option>` : '');
   sel.value = state.semId;
   sel.onchange = ()=>{
     if(sel.value==='__add_next__'){ addNextSemester(); return; }
     state.semId = sel.value; render();
   };
-  // 학기 삭제 버튼 (관리자만 노출)
+  // 학기 삭제 버튼 — 분원 계정만 (자기 분원의 그 학기 데이터만 삭제). 관리자는 숨김.
   const delBtn = el('semDelBtn');
   if(delBtn){
-    delBtn.style.display = (session.role==='admin') ? 'inline-flex' : 'none';
+    delBtn.style.display = isBranch ? 'inline-flex' : 'none';
     delBtn.onclick = ()=> confirmDeleteSemester();
   }
 
