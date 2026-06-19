@@ -527,6 +527,8 @@ function render(){
     if(root==='data'||root==='students'){ go('admin'); return; }
   }
   if(session.role==='branch' && (root==='admin'||root==='accounts')){ go('branch'); return; }
+  // 분원 계정은 자기 분원 roster 상세만 (다른 분원 직접 접근 차단)
+  if(session.role==='branch' && root==='roster' && parts[1]==='branch' && parts[2] && parts[2]!==session.branchId){ go('roster'); return; }
 
   const c = el('content');
   if(root==='admin'){
@@ -539,7 +541,10 @@ function render(){
     else { setActiveNav('branch'); renderBranchDashboard(); }
   } else if(root==='data'){ setActiveNav('data'); renderDataManagement(); }
   else if(root==='students'){ setActiveNav('students'); renderStudentManagement(); }
-  else if(root==='roster'){ setActiveNav('roster'); renderRoster(); }
+  else if(root==='roster'){
+    if(parts[1]==='branch' && parts[2]){ setActiveNav('roster'); renderRosterDetail(parts[2]); }
+    else { setActiveNav('roster'); renderRoster(); }
+  }
   else { go(session.role==='admin'?'admin':'branch'); return; }
   el('content').scrollIntoView({block:'start'});
   window.scrollTo(0,0);
@@ -1110,63 +1115,108 @@ function openCounseling(studentId, stage, name){
   `);
 }
 /* ============================================================================
-   14-2. 신규·퇴원 명단 (관리자=전 분원, 분원=자기 분원)
+   14-2. 신규·퇴원 명단 (관리자=요약+분원카드, 클릭→분원상세 / 분원=바로 상세)
    ============================================================================ */
-function renderRoster(){
-  const isAdmin = session.role==='admin';
-  const semId = state.semId;
-  const tab = state.rosterTab || 'new';
-  crumbs([{label:'신규·퇴원 명단'}]);
-
-  // 대상 분원 범위
-  const branchIds = isAdmin ? db.branches.map(b=>b.id) : [session.branchId];
-
-  // 신규/퇴원 학생 레코드 모으기
-  // 신규 = 이 학기 semesterRecords 중 origin==='new'
-  // 퇴원 = 이 학기 semesterRecords 중 status==='withdraw'
+/* 한 분원의 신규·퇴원 인원 집계 */
+function rosterCount(branchId, semId){
+  let newCnt=0, wdCnt=0;
+  recordsOf(branchId, semId).forEach(r=>{
+    if(r.origin==='new') newCnt++;
+    if(r.status==='withdraw') wdCnt++;
+  });
+  return { newCnt, wdCnt };
+}
+/* 한 분원의 신규 또는 퇴원 학생 행 목록 */
+function rosterRows(branchId, semId, tab){
   const rows = [];
-  branchIds.forEach(bid=>{
-    const b = getBranch(bid);
-    recordsOf(bid, semId).forEach(r=>{
-      const s = getStudent(r.studentId);
-      if(!s) return;
-      const isNew = (r.origin==='new');
-      const isWd = (r.status==='withdraw');
-      if(tab==='new' && !isNew) return;
-      if(tab==='withdraw' && !isWd) return;
-      // 날짜: 이동이력에서 해당 타입의 날짜 찾기
-      const mvType = tab==='new' ? 'new' : 'withdraw';
-      const mv = db.studentMovements.find(m=>m.studentId===r.studentId && m.branchId===bid && m.semesterId===semId && m.type===mvType);
-      rows.push({
-        branchName: b?b.name:'-',
-        name: s.name, code: s.code, school: s.school||'', grade: s.grade||'',
-        classLabel: r.classLabel||r.className||'-', teacher: r.teacher||'-',
-        date: (mv&&mv.date)||r.enrollDate||'-',
-        memo: (mv&&mv.memo)||'',
-      });
+  recordsOf(branchId, semId).forEach(r=>{
+    const s = getStudent(r.studentId);
+    if(!s) return;
+    if(tab==='new' && r.origin!=='new') return;
+    if(tab==='withdraw' && r.status!=='withdraw') return;
+    const mvType = tab==='new' ? 'new' : 'withdraw';
+    const mv = db.studentMovements.find(m=>m.studentId===r.studentId && m.branchId===branchId && m.semesterId===semId && m.type===mvType);
+    const date = tab==='new' ? (r.enrollDate || (mv&&mv.date) || '-')
+                             : (r.withdrawDate || (mv&&mv.date) || '-');
+    rows.push({
+      name:s.name, code:s.code, school:s.school||'', grade:s.grade||'',
+      classLabel:r.classLabel||r.className||'-', teacher:r.teacher||'-',
+      date, memo:(mv&&mv.memo)||'',
     });
   });
   rows.sort((a,b)=> (b.date||'').localeCompare(a.date||''));
+  return rows;
+}
 
-  // 카운트 (탭 뱃지용)
-  let newCnt=0, wdCnt=0;
-  branchIds.forEach(bid=>{
-    recordsOf(bid, semId).forEach(r=>{
-      if(r.origin==='new') newCnt++;
-      if(r.status==='withdraw') wdCnt++;
-    });
+function renderRoster(){
+  const isAdmin = session.role==='admin';
+  const semId = state.semId;
+  // 분원 계정은 곧장 자기 분원 상세로
+  if(!isAdmin){ renderRosterDetail(session.branchId); return; }
+
+  crumbs([{label:'신규·퇴원 명단'}]);
+
+  // 전체 요약 + 분원별 카드
+  let totNew=0, totWd=0;
+  const cards = db.branches.map(b=>{
+    const c = rosterCount(b.id, semId);
+    totNew+=c.newCnt; totWd+=c.wdCnt;
+    return { b, ...c };
   });
-
-  const scopeLabel = isAdmin ? '전 분원' : (getBranch(session.branchId)?.name||'');
 
   let html = `
     <div class="page-head">
       <h2>신규·퇴원 명단</h2>
-      <div class="sub">${esc(scopeLabel)} · ${esc(db.semesters.find(s=>s.id===semId).name)}</div>
+      <div class="sub">전 분원 · ${esc(db.semesters.find(s=>s.id===semId).name)}</div>
+    </div>
+    <div class="kpi-row c2">
+      ${kpiCard('전체 신규생', totNew, {unit:'명', accent:true})}
+      ${kpiCard('전체 퇴원생', totWd, {unit:'명'})}
+    </div>
+    <div class="sect-head"><h3>분원별 현황</h3><span class="cnt">카드를 클릭하면 명단 상세로 이동</span></div>
+    <div class="card-grid g3">
+    ${cards.map(({b,newCnt,wdCnt})=>`
+      <div class="card clickable" onclick="go('roster/branch/${b.id}')">
+        <div class="card-top">
+          <div><div class="card-name">${esc(b.name)}</div>
+            <div class="card-sub">${newCnt+wdCnt>0?'클릭해서 명단 보기':'변동 없음'}</div></div>
+        </div>
+        <div class="roster-mini">
+          <div class="rm-box new"><div class="rm-num">${newCnt}</div><div class="rm-label">신규생</div></div>
+          <div class="rm-box wd"><div class="rm-num">${wdCnt}</div><div class="rm-label">퇴원생</div></div>
+        </div>
+        <div class="card-foot"><span></span>${goArrow}</div>
+      </div>`).join('')}
+    </div>`;
+  el('content').innerHTML = html;
+}
+
+/* 분원별 신규·퇴원 명단 상세 (신규/퇴원 탭 + 표) */
+function renderRosterDetail(branchId){
+  const isAdmin = session.role==='admin';
+  const b = getBranch(branchId);
+  if(!b){ go('roster'); return; }
+  const semId = state.semId;
+  const tab = state.rosterTab || 'new';
+
+  if(isAdmin){
+    crumbs([{label:'신규·퇴원 명단', go:'roster'},{label:b.name}]);
+  } else {
+    crumbs([{label:'신규·퇴원 명단'}]);
+  }
+
+  const c = rosterCount(branchId, semId);
+  const rows = rosterRows(branchId, semId, tab);
+
+  let html = `
+    ${isAdmin?backLink('신규·퇴원 명단','roster'):''}
+    <div class="page-head">
+      <h2>${esc(b.name)} 신규·퇴원 명단</h2>
+      <div class="sub">${esc(db.semesters.find(s=>s.id===semId).name)}</div>
     </div>
     <div class="sort-bar" style="margin-bottom:16px">
-      <button class="sb-btn ${tab==='new'?'on':''}" onclick="setRosterTab('new')">신규생 ${newCnt}</button>
-      <button class="sb-btn ${tab==='withdraw'?'on':''}" onclick="setRosterTab('withdraw')">퇴원생 ${wdCnt}</button>
+      <button class="sb-btn ${tab==='new'?'on':''}" onclick="setRosterTab('new')">신규생 ${c.newCnt}</button>
+      <button class="sb-btn ${tab==='withdraw'?'on':''}" onclick="setRosterTab('withdraw')">퇴원생 ${c.wdCnt}</button>
     </div>`;
 
   if(rows.length===0){
@@ -1175,14 +1225,13 @@ function renderRoster(){
     html += `<div class="table-wrap"><div class="table-scroll">
       <table class="rank-table">
         <thead><tr>
-          <th>학생명</th><th>회원코드</th>${isAdmin?'<th>분원</th>':''}<th>반</th><th>담임</th>
+          <th>학생명</th><th>회원코드</th><th>반</th><th>담임</th>
           <th>학교/학년</th><th>${tab==='new'?'입학일':'퇴원일'}</th>${tab==='withdraw'?'<th>사유</th>':''}
         </tr></thead>
         <tbody>
         ${rows.map(r=>`<tr>
           <td class="nm">${esc(r.name)}</td>
           <td><span class="code-chip">${esc(r.code)}</span></td>
-          ${isAdmin?`<td><span class="branch-chip">${esc(r.branchName)}</span></td>`:''}
           <td>${esc(r.classLabel)}</td>
           <td>${esc(r.teacher)}</td>
           <td style="color:var(--ink-3);font-size:12px">${esc(r.school)} ${esc(r.grade)}${r.grade?'학년':''}</td>
