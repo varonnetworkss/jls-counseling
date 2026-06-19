@@ -128,6 +128,12 @@ async function loadDB(){
     }
     db[t.key] = all.map(t.fromRow);
   }
+  // 기존 데이터 보정: classLabel이 원본 형식(대괄호 포함)이면 깔끔한 라벨로 변환
+  (db.semesterRecords||[]).forEach(r=>{
+    if(r.classLabel && /^\s*\[/.test(r.classLabel)){
+      r.classLabel = classLabel(r.classLabel) || r.classLabel;
+    }
+  });
   // 학기 자동 보강 (현재+직전 학기). 새로 추가된 학기는 서버에도 저장.
   ensureSemesters();
   dbSnapshot = JSON.parse(JSON.stringify(db));  // 기준 스냅샷
@@ -1588,7 +1594,8 @@ function saveEditStudent(recId){
   s.name=name; s.code=code;
   s.school=el('edSchool').value.trim(); s.grade=el('edGrade').value.trim();
   const inClass=el('edClass').value.trim()||'미배정';
-  rec.className=inClass; rec.classLabel=inClass;
+  rec.className=inClass;
+  rec.classLabel=classLabel(inClass)||inClass;  // 원본 형식이면 깔끔한 라벨로 자동 변환
   rec.teacher=el('edTeacher').value.trim()||'미배정';
   rec.enrollDate=el('edDate').value;
   saveDB(); closeModal(); toast('수정 완료','ok'); render();
