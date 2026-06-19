@@ -22,11 +22,46 @@ function semesterOfDate(d){
   return { id:`sem_${year}_${season.key}`, name:`${year}년 ${season.label}학기`, year, key:season.key };
 }
 function currentSemester(){ return semesterOfDate(new Date()); }
+/* 학기 드롭다운에서 '다음 학기 추가' 선택 시 — 가장 최신 학기의 다음 학기를 만들어 전환 */
+function addNextSemester(){
+  // db.semesters 중 가장 최신(rank 큰) 학기를 기준으로 다음 학기 계산
+  const rank = id=>{ const m=String(id).match(/sem_(\d+)_(\w+)/); if(!m) return 0;
+    const o={spring:0,summer:1,fall:2,winter:3}; return parseInt(m[1],10)*10+(o[m[2]]||0); };
+  const latest = [...db.semesters].sort((a,b)=>rank(b.id)-rank(a.id))[0];
+  let base;
+  if(latest){ const m=String(latest.id).match(/sem_(\d+)_(\w+)/);
+    base={year:parseInt(m[1],10), key:m[2]}; }
+  else base=currentSemester();
+  const next = semesterForward(base, 1);
+  if(db.semesters.some(s=>s.id===next.id)){
+    state.semId = next.id;  // 이미 있으면 그냥 전환
+    buildShell(); render(); return;
+  }
+  db.semesters.push({ id:next.id, name:next.name });
+  // 최신순 재정렬
+  const rk = id=>{ const m=String(id).match(/sem_(\d+)_(\w+)/); if(!m) return 0;
+    const o={spring:0,summer:1,fall:2,winter:3}; return parseInt(m[1],10)*10+(o[m[2]]||0); };
+  db.semesters.sort((a,b)=>rk(b.id)-rk(a.id));
+  state.semId = next.id;
+  saveDB();
+  buildShell();
+  toast(`${next.name} 추가됨 — 이제 이 학기 명단을 업로드하세요`,'ok');
+  render();
+}
 /* 현재 학기에서 n학기 전 */
 function semesterBack(base, n){
   const order = ['spring','summer','fall','winter']; // 봄→여름→가을→겨울
   let year = base.year, idx = order.indexOf(base.key);
   for(let i=0;i<n;i++){ idx-=1; if(idx<0){ idx=order.length-1; year-=1; } }
+  const key = order[idx];
+  const label = SEASONS.find(s=>s.key===key).label;
+  return { id:`sem_${year}_${key}`, name:`${year}년 ${label}학기`, year, key };
+}
+/* 현재 학기에서 n학기 후 */
+function semesterForward(base, n){
+  const order = ['spring','summer','fall','winter'];
+  let year = base.year, idx = order.indexOf(base.key);
+  for(let i=0;i<n;i++){ idx+=1; if(idx>=order.length){ idx=0; year+=1; } }
   const key = order[idx];
   const label = SEASONS.find(s=>s.key===key).label;
   return { id:`sem_${year}_${key}`, name:`${year}년 ${label}학기`, year, key };
@@ -42,13 +77,16 @@ function ensureSemesters(){
     const ex = db.semesters.find(s=>s.id===cur.id);
     if(ex.name!==cur.name) ex.name = cur.name;
   }
-  // 실제 데이터(학생 레코드/상담)가 있는 과거 학기만 유지, 데이터 없는 과거학기는 목록에서 제거
+  // 실제 데이터(학생 레코드/상담)가 있는 과거 학기 + 현재 + 미래(수동 추가) 학기 유지
+  const curRank = (()=>{ const o={spring:0,summer:1,fall:2,winter:3}; return cur.year*10+(o[cur.key]||0); })();
+  const rankOf = id=>{ const m=String(id).match(/sem_(\d+)_(\w+)/); if(!m) return 0;
+    const o={spring:0,summer:1,fall:2,winter:3}; return parseInt(m[1],10)*10+(o[m[2]]||0); };
   const usedSemIds = new Set([
     cur.id,
     ...((db.semesterRecords||[]).map(r=>r.semesterId)),
     ...((db.counselingHistories||[]).map(c=>c.semesterId)),
   ]);
-  db.semesters = db.semesters.filter(s=> usedSemIds.has(s.id));
+  db.semesters = db.semesters.filter(s=> usedSemIds.has(s.id) || rankOf(s.id) > curRank);
   // 최신순 정렬
   const rank = id=>{
     const m = String(id).match(/sem_(\d+)_(\w+)/);
@@ -82,8 +120,8 @@ const TABLES = [
     fromRow:r=>({id:r.id,name:r.name}) },
   { key:'students',           table:'students',             toRow:s=>({id:s.id,code:s.code,name:s.name,school:s.school,grade:s.grade}),
     fromRow:r=>({id:r.id,code:r.code,name:r.name,school:r.school,grade:r.grade}) },
-  { key:'semesterRecords',    table:'semester_records',     toRow:r=>({id:r.id,student_id:r.studentId,branch_id:r.branchId,semester_id:r.semesterId,class_name:r.className,class_label:r.classLabel,teacher:r.teacher,note:r.note,target_type:r.targetType,status:r.status,origin:r.origin,enroll_date:r.enrollDate,withdraw_date:r.withdrawDate}),
-    fromRow:r=>({id:r.id,studentId:r.student_id,branchId:r.branch_id,semesterId:r.semester_id,className:r.class_name,classLabel:r.class_label,teacher:r.teacher,note:r.note,targetType:r.target_type,status:r.status,origin:r.origin,enrollDate:r.enroll_date,withdrawDate:r.withdraw_date}) },
+  { key:'semesterRecords',    table:'semester_records',     toRow:r=>({id:r.id,student_id:r.studentId,branch_id:r.branchId,semester_id:r.semesterId,class_name:r.className,class_label:r.classLabel,teacher:r.teacher,note:r.note,target_type:r.targetType,status:r.status,origin:r.origin,enroll_date:r.enrollDate,withdraw_date:r.withdrawDate,transfer:!!r.transfer}),
+    fromRow:r=>({id:r.id,studentId:r.student_id,branchId:r.branch_id,semesterId:r.semester_id,className:r.class_name,classLabel:r.class_label,teacher:r.teacher,note:r.note,targetType:r.target_type,status:r.status,origin:r.origin,enrollDate:r.enroll_date,withdrawDate:r.withdraw_date,transfer:!!r.transfer}) },
   { key:'counselingHistories',table:'counseling_histories', toRow:c=>({id:c.id,student_id:c.studentId,branch_id:c.branchId,semester_id:c.semesterId,date:c.date,type:c.type,content:c.content,counselor:c.counselor,batch_id:c.batchId,mistag:!!c.mistag}),
     fromRow:r=>({id:r.id,studentId:r.student_id,branchId:r.branch_id,semesterId:r.semester_id,date:r.date,type:r.type,content:r.content,counselor:r.counselor,batchId:r.batch_id,mistag:!!r.mistag}) },
   { key:'studentMovements',   table:'student_movements',    toRow:m=>({id:m.id,student_id:m.studentId,branch_id:m.branchId,semester_id:m.semesterId,type:m.type,date:m.date,memo:m.memo}),
@@ -357,10 +395,12 @@ function headcountClean(branchId, semId){
   const recs = recordsOf(branchId, semId);
   const total = recs.length;
   const newCnt = recs.filter(r=>r.origin==='new').length;
-  const withdraw = recs.filter(r=>r.status==='withdraw').length;
+  // 퇴원: 전출 제외한 순수 퇴원만 (전출은 퇴원율에 반영 안 함)
+  const withdraw = recs.filter(r=>r.status==='withdraw' && !r.transfer).length;
+  const transfer = recs.filter(r=>r.status==='withdraw' && r.transfer).length;
   const active = recs.filter(r=>r.status==='active').length;
   const startCount = total - newCnt;       // 학기초 인원 = 전체 - 신규
-  return { start:startCount, newCnt, withdraw, active, net:newCnt - withdraw };
+  return { start:startCount, newCnt, withdraw, transfer, active, net:newCnt - withdraw - transfer };
 }
 
 /* 담임별 집계 */
@@ -376,7 +416,7 @@ function teachersOf(branchId, semId){
     const classes = new Set(trecs.map(r=>r.className));
     const rates = calcRates(trecs, branchId, semId);
     // 이 담임의 퇴원생 수 (status=withdraw, 같은 담임)
-    const withdrawCnt = allRecs.filter(r=>r.teacher===teacher && r.status==='withdraw').length;
+    const withdrawCnt = allRecs.filter(r=>r.teacher===teacher && r.status==='withdraw' && !r.transfer).length;
     const newCnt = trecs.filter(r=>r.origin==='new').length;
     // 퇴원율 = 퇴원 / (현재 재원 + 퇴원) — 한때 맡았던 전체 대비
     const base = trecs.length + withdrawCnt;
@@ -504,11 +544,15 @@ function buildShell(){
   el('sbUserName').textContent = isAdmin ? '관리자' : (branch?branch.name:session.username);
   el('sbUserRole').textContent = session.username;
 
-  // 학기 선택
+  // 학기 선택 (+ 다음 학기 수동 추가 옵션)
   const sel = el('semSelect');
-  sel.innerHTML = db.semesters.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
+  sel.innerHTML = db.semesters.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('')
+    + `<option value="__add_next__">+ 다음 학기 추가…</option>`;
   sel.value = state.semId;
-  sel.onchange = ()=>{ state.semId = sel.value; render(); };
+  sel.onchange = ()=>{
+    if(sel.value==='__add_next__'){ addNextSemester(); return; }
+    state.semId = sel.value; render();
+  };
 
   // 네비
   const nav = el('sbNav');
@@ -1494,11 +1538,16 @@ function renderDataManagement(){
       <div class="panel-head"><div class="pi" style="background:var(--neg-soft);color:var(--neg)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></div>
         <div><h3>데이터 비우기</h3></div></div>
-      <div class="pd">필요한 것만 골라서 비울 수 있습니다. 전체명단과 상담이력은 따로 지워집니다.</div>
+      <div class="pd">필요한 것만 골라서 비울 수 있습니다. 전체명단과 상담이력은 따로 지워집니다. 아래 '상담이력 업로드 내역'에서 잘못 올린 묶음만 골라 지울 수도 있습니다.</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px">
         <button class="btn" style="border-color:var(--neg-soft);color:var(--neg)" onclick="confirmClearHistory()">상담이력 전체 삭제</button>
         <button class="btn" style="border-color:var(--neg-soft);color:var(--neg)" onclick="confirmClearRoster()">전체명단 삭제</button>
-        <button class="btn" style="border-color:var(--neg-soft);color:var(--neg)" onclick="confirmReset()">전체 초기화</button>
+      </div>
+      <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--line-2)">
+        <div style="font-size:13px;font-weight:700;margin-bottom:4px">학생 개별 삭제</div>
+        <div class="pd" style="margin-bottom:8px">특정 학생만 명단에서 제거합니다. 이름이나 회원코드로 검색해서 고르세요. (해당 학생의 상담이력도 함께 삭제됩니다)</div>
+        <input id="delSearch" placeholder="예: 김태양" autocomplete="off" oninput="renderDelResults()" style="width:100%;height:38px;padding:0 11px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface-2)">
+        <div id="delResults" class="wd-results" style="margin-top:8px"></div>
       </div>
     </div>`;
 
@@ -1555,6 +1604,44 @@ function confirmClearHistory(){
       db.counselingHistories = db.counselingHistories.filter(c=>!(c.branchId===branchId && c.semesterId===semId));
       db.uploadBatches = (db.uploadBatches||[]).filter(x=>!(x.kind==='history' && x.branchId===branchId && x.semesterId===semId));
       saveDB(); closeModal(); toast('상담이력 삭제 완료','ok'); render();
+    });
+}
+
+/* 학생 개별 삭제 — 검색 결과 렌더 */
+function renderDelResults(){
+  const branchId=session.branchId, semId=state.semId;
+  const q=(el('delSearch').value||'').trim().toLowerCase();
+  const box=el('delResults');
+  if(!q){ box.innerHTML=''; return; }
+  const matches = recordsOf(branchId, semId).filter(r=>{
+    const s=getStudent(r.studentId); if(!s) return false;
+    return s.name.toLowerCase().includes(q) || (s.code||'').toLowerCase().includes(q);
+  }).sort((a,b)=>{
+    const sa=getStudent(a.studentId), sb=getStudent(b.studentId);
+    return (sa?sa.name:'').localeCompare(sb?sb.name:'','ko');
+  });
+  if(matches.length===0){ box.innerHTML=`<div class="wd-empty">검색 결과가 없습니다</div>`; return; }
+  box.innerHTML = matches.slice(0,30).map(r=>{
+    const s=getStudent(r.studentId);
+    const st = r.status==='withdraw' ? '<span class="status-badge withdraw">퇴원</span>' : '';
+    return `<div class="wd-item" onclick="confirmDeleteOneStudent('${r.id}')">
+      <div class="wd-main"><span class="wd-name">${esc(s.name)}</span><span class="code-chip">${esc(s.code)}</span> ${st}</div>
+      <div class="wd-meta">${esc(r.classLabel||r.className)} · ${esc(r.teacher)} 담임</div>
+    </div>`;
+  }).join('');
+}
+function confirmDeleteOneStudent(recId){
+  const rec=db.semesterRecords.find(r=>r.id===recId);
+  if(!rec) return;
+  const s=getStudent(rec.studentId);
+  const histCnt = db.counselingHistories.filter(c=>c.studentId===rec.studentId && c.branchId===rec.branchId && c.semesterId===rec.semesterId).length;
+  openConfirm('학생 삭제',
+    `${s.name} (${s.code}) · ${rec.classLabel||rec.className}\n이 학생의 명단 기록${histCnt?`과 상담이력 ${histCnt}건`:''}이 삭제됩니다. 되돌릴 수 없습니다.`,
+    ()=>{
+      db.semesterRecords = db.semesterRecords.filter(r=>r.id!==recId);
+      db.counselingHistories = db.counselingHistories.filter(c=>!(c.studentId===rec.studentId && c.branchId===rec.branchId && c.semesterId===rec.semesterId));
+      db.studentMovements = (db.studentMovements||[]).filter(m=>!(m.studentId===rec.studentId && m.branchId===rec.branchId && m.semesterId===rec.semesterId));
+      saveDB(); closeModal(); toast(`${s.name} 삭제 완료`,'ok'); render();
     });
 }
 
@@ -1654,6 +1741,7 @@ function renderStudentManagement(){
           <div class="field"><label>퇴원일</label><input id="wdDate" type="date" value="${today()}"></div>
           <div class="field"><label>사유 (선택)</label><input id="wdMemo" placeholder="예: 타지역 이사"></div>
         </div>
+        <label class="wd-transfer"><input type="checkbox" id="wdTransfer"> <span>전출 (다른 분원으로 이동) — 퇴원율에 반영하지 않음</span></label>
         <button class="btn" style="width:100%;border-color:var(--neg-soft);color:var(--neg)" onclick="withdrawStudent()">퇴원 처리</button>
       </div>
     </div>
@@ -2215,12 +2303,14 @@ function withdrawStudent(){
   const rec=db.semesterRecords.find(r=>r.id===recId);
   if(!rec){ toast('학생을 다시 선택하세요','err'); return; }
   const wdDate = el('wdDate').value || today();
+  const isTransfer = el('wdTransfer') ? el('wdTransfer').checked : false;
   rec.status='withdraw';
   rec.withdrawDate=wdDate;   // 레코드에도 퇴원일 저장 (월별 추적용)
+  rec.transfer=isTransfer;   // 전출이면 퇴원율 계산에서 제외
   const stu=getStudent(rec.studentId);
   db.studentMovements.push({id:uid('mv'),studentId:rec.studentId,branchId:rec.branchId,semesterId:rec.semesterId,
-    type:'withdraw',date:wdDate,memo:el('wdMemo').value.trim()||'퇴원 처리'});
-  saveDB(); toast(`${stu.name} 퇴원 처리 완료`,'ok'); render();
+    type:'withdraw',date:wdDate,memo:(isTransfer?'[전출] ':'')+(el('wdMemo').value.trim()||'퇴원 처리')});
+  saveDB(); toast(`${stu.name} ${isTransfer?'전출':'퇴원'} 처리 완료`,'ok'); render();
 }
 
 /* 담임 변경 — 반 선택 시 현재 담임 자동 표시 */
