@@ -84,8 +84,8 @@ const TABLES = [
     fromRow:r=>({id:r.id,code:r.code,name:r.name,school:r.school,grade:r.grade}) },
   { key:'semesterRecords',    table:'semester_records',     toRow:r=>({id:r.id,student_id:r.studentId,branch_id:r.branchId,semester_id:r.semesterId,class_name:r.className,class_label:r.classLabel,teacher:r.teacher,note:r.note,target_type:r.targetType,status:r.status,origin:r.origin,enroll_date:r.enrollDate}),
     fromRow:r=>({id:r.id,studentId:r.student_id,branchId:r.branch_id,semesterId:r.semester_id,className:r.class_name,classLabel:r.class_label,teacher:r.teacher,note:r.note,targetType:r.target_type,status:r.status,origin:r.origin,enrollDate:r.enroll_date}) },
-  { key:'counselingHistories',table:'counseling_histories', toRow:c=>({id:c.id,student_id:c.studentId,branch_id:c.branchId,semester_id:c.semesterId,date:c.date,type:c.type,content:c.content,counselor:c.counselor,batch_id:c.batchId}),
-    fromRow:r=>({id:r.id,studentId:r.student_id,branchId:r.branch_id,semesterId:r.semester_id,date:r.date,type:r.type,content:r.content,counselor:r.counselor,batchId:r.batch_id}) },
+  { key:'counselingHistories',table:'counseling_histories', toRow:c=>({id:c.id,student_id:c.studentId,branch_id:c.branchId,semester_id:c.semesterId,date:c.date,type:c.type,content:c.content,counselor:c.counselor,batch_id:c.batchId,mistag:!!c.mistag}),
+    fromRow:r=>({id:r.id,studentId:r.student_id,branchId:r.branch_id,semesterId:r.semester_id,date:r.date,type:r.type,content:r.content,counselor:r.counselor,batchId:r.batch_id,mistag:!!r.mistag}) },
   { key:'studentMovements',   table:'student_movements',    toRow:m=>({id:m.id,student_id:m.studentId,branch_id:m.branchId,semester_id:m.semesterId,type:m.type,date:m.date,memo:m.memo}),
     fromRow:r=>({id:r.id,studentId:r.student_id,branchId:r.branch_id,semesterId:r.semester_id,type:r.type,date:r.date,memo:r.memo}) },
   { key:'uploadBatches',      table:'upload_batches',       toRow:b=>({id:b.id,branch_id:b.branchId,semester_id:b.semesterId,kind:b.kind,file_name:b.fileName,uploaded_at:b.uploadedAt,added:b.added,dup:b.dup,skip:b.skip}),
@@ -203,6 +203,26 @@ function semesterMonths(semId){
   if(name.includes('가을')) return [9,10,11];
   return [1,2,3];
 }
+/* 상담 회차(MC1~3)와 실제 상담 날짜를 비교해 어느 학기 상담인지 판정.
+   - HC1/HC2: 월 제한 없음 → 'ok'
+   - 상담월 >= 회차정상월(정상이거나 늦게함)        → 'ok'      (현재학기 인정)
+   - 정상월이 상담월보다 2달 이상 뒤(너무 이름)     → 'prev'    (이전학기 → 제외)
+   - 정상월이 상담월보다 딱 1달 뒤(애매하게 이름)   → 'mistag'  (오기재 의심 → 제외+메모) */
+function stageTimingCheck(type, dateStr, semId){
+  if(type==='HC1' || type==='HC2') return 'ok';
+  const months = semesterMonths(semId);            // 예: [6,7,8]
+  const stageIdx = { MC1:0, MC2:1, MC3:2 }[type];  // 회차의 정상 '몇 번째 달'
+  if(stageIdx==null) return 'ok';
+  const m = String(dateStr||'').match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if(!m) return 'ok';                              // 날짜 파싱 불가 → 인정
+  const cMonth = parseInt(m[2],10);
+  const slot = months.indexOf(cMonth);             // 상담월이 이 학기의 몇 번째 달인지
+  if(slot===-1) return 'prev';                     // 학기 3개월에 없음 → 이전학기
+  const diff = stageIdx - slot;                    // 회차정상위치 - 실제상담위치
+  if(diff <= 0) return 'ok';
+  if(diff === 1) return 'mistag';
+  return 'prev';
+}
 /* 입학일(enrollDate)에서 월 추출. 없으면 null(=학기초부터 다닌 학생) */
 function enrollMonth(rec){
   if(!rec.enrollDate) return null;
@@ -224,7 +244,7 @@ function isTarget(rec, stage, semId){
 function isDone(studentId, branchId, semId, stage){
   return db.counselingHistories.some(c=>
     c.studentId===studentId && c.branchId===branchId &&
-    c.semesterId===semId && c.type===stage);
+    c.semesterId===semId && c.type===stage && !c.mistag);  // 오기재 의심은 완료로 치지 않음
 }
 /* 학생의 상담 이력(특정 단계) */
 function historiesOf(studentId, branchId, semId, stage){
@@ -964,6 +984,14 @@ function renderClassDetail(teacher, className){
         return `<td class="cc"><span class="cc-mark done" title="상담 내용 보기"
           onclick="openCounseling('${rec.studentId}','${stg}','${esc(stu.name)}')">○</span></td>`;
       }
+      // 오기재 의심: 이 단계에 mistag 상담 기록이 있으면 ⚠️로 표시 (완료 아님)
+      const hasMistag = db.counselingHistories.some(c=>
+        c.studentId===rec.studentId && c.branchId===branchId &&
+        c.semesterId===semId && c.type===stg && c.mistag);
+      if(hasMistag){
+        return `<td class="cc"><span class="cc-mark mistag" title="대괄호 회차 오기재 의심 — 내용 확인"
+          onclick="openCounseling('${rec.studentId}','${stg}','${esc(stu.name)}')">⚠</span></td>`;
+      }
       return `<td class="cc"><span class="cc-mark undone" title="미완료">✕</span></td>`;
     }).join('');
     return `<tr>
@@ -1005,7 +1033,7 @@ function renderClassDetail(teacher, className){
       <div class="table-foot">${footCells}${footTotal}</div>
     </div>
     <div style="margin-top:14px;font-size:12px;color:var(--ink-3)">
-      ○ 완료(클릭 시 상담 내용) · ✕ 미완료 · – 상담 대상 아님(기존생은 HC 제외)
+      ○ 완료(클릭 시 상담 내용) · ✕ 미완료 · ⚠ 회차 오기재 의심(대괄호 잘못 표기) · – 상담 대상 아님(기존생은 HC 제외)
     </div>`;
   el('content').innerHTML = html;
 }
@@ -1567,7 +1595,7 @@ function importHistory(file, branchId, semId){
     if(idx.content<0){ toast('내용 열을 찾지 못했습니다','err'); return; }
     // 이번 업로드를 하나의 배치로 기록
     const batchId = uid('batch');
-    let added=0, dup=0, skip=0, notCounsel=0;
+    let added=0, dup=0, skip=0, notCounsel=0, prevSem=0, misTagCnt=0;
     rows.slice(1).forEach(r=>{
       // 분류가 '상담'인 건만 반영 (수납/기타/성적 등 제외)
       if(idx.category>=0){
@@ -1593,6 +1621,11 @@ function importHistory(file, branchId, semId){
       const uniqTags = [...new Set(tags)];
       if(uniqTags.length===0){ skip++; return; } // 단계 태그 없는 상담은 완료율과 무관 → 미반영
       uniqTags.forEach(type=>{
+        // ★ 회차-월 판정: 이전학기 상담이면 현재 학기 집계에서 제외
+        const timing = stageTimingCheck(type, date, semId);
+        if(timing==='prev'){ prevSem++; return; }  // 이전 학기 상담 → 현재 학기에 미반영
+        const isMistag = (timing==='mistag');      // 오기재 의심 → 저장하되 완료 집계 제외
+
         // 같은 학생·같은 학기·같은 단계의 기존 상담을 찾음
         const prev = db.counselingHistories.find(c=>
           c.studentId===stu.id && c.branchId===branchId &&
@@ -1605,12 +1638,15 @@ function importHistory(file, branchId, semId){
           prev.date = date;
           prev.counselor = String(r[idx.counselor]||'').trim();
           prev.batchId = batchId;
+          prev.mistag = isMistag;
+          if(isMistag) misTagCnt++;
           added++;  // 갱신도 반영 건수로 카운트
           return;
         }
         // 기존에 없던 단계면 새로 추가
         db.counselingHistories.push({id:uid('ch'),studentId:stu.id,branchId,semesterId:semId,
-          date,type,content,counselor:String(r[idx.counselor]||'').trim(), batchId});
+          date,type,content,counselor:String(r[idx.counselor]||'').trim(), batchId, mistag:isMistag});
+        if(isMistag) misTagCnt++;
         added++;
       });
     });
@@ -1623,7 +1659,10 @@ function importHistory(file, branchId, semId){
       });
     }
     await saveDB();
-    toast(`상담이력 누적 · 추가 ${added}, 중복 ${dup}, 미매칭 ${skip}`,'ok');
+    let extra = '';
+    if(prevSem>0) extra += `, 이전학기 제외 ${prevSem}`;
+    if(misTagCnt>0) extra += `, 오기재 의심 ${misTagCnt}`;
+    toast(`상담이력 누적 · 추가 ${added}, 중복 ${dup}, 미매칭 ${skip}${extra}`,'ok');
     render();
   });
 }

@@ -293,6 +293,8 @@ table.rank-table tbody tr:last-child td{border-bottom:none}
 .cc-mark.done:hover{background:#d4ecdf;transform:scale(1.08)}
 .cc-mark.undone{color:var(--neg);background:var(--neg-soft)}
 .cc-mark.na{color:var(--ink-3);background:var(--line-2);opacity:.5;font-size:11px}
+.cc-mark.mistag{color:var(--warn);background:var(--warn-soft);cursor:pointer;font-size:12px}
+.cc-mark.mistag:hover{transform:scale(1.08)}
 
 .table-foot{display:grid;grid-template-columns:repeat(6,1fr);
   background:var(--surface-2);border-top:1px solid var(--line)}
