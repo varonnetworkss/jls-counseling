@@ -281,6 +281,7 @@ function headcountClean(branchId, semId){
 /* 담임별 집계 */
 function teachersOf(branchId, semId){
   const recs = activeRecordsOf(branchId, semId);
+  const allRecs = recordsOf(branchId, semId); // 퇴원 포함 전체
   const map = new Map();
   recs.forEach(r=>{
     if(!map.has(r.teacher)) map.set(r.teacher, []);
@@ -289,9 +290,27 @@ function teachersOf(branchId, semId){
   return [...map.entries()].map(([teacher, trecs])=>{
     const classes = new Set(trecs.map(r=>r.className));
     const rates = calcRates(trecs, branchId, semId);
+    // 이 담임의 퇴원생 수 (status=withdraw, 같은 담임)
+    const withdrawCnt = allRecs.filter(r=>r.teacher===teacher && r.status==='withdraw').length;
+    const newCnt = trecs.filter(r=>r.origin==='new').length;
+    // 퇴원율 = 퇴원 / (현재 재원 + 퇴원) — 한때 맡았던 전체 대비
+    const base = trecs.length + withdrawCnt;
+    const withdrawRate = base>0 ? Math.round(withdrawCnt/base*100) : 0;
     return { teacher, recs:trecs, studentCount:trecs.length,
-             classCount:classes.size, rates };
+             classCount:classes.size, rates,
+             withdrawCnt, newCnt, withdrawRate };
   }).sort((a,b)=> a.teacher.localeCompare(b.teacher,'ko'));
+}
+
+/* 전 분원 통합 담임 목록 — 같은 이름이라도 분원이 다르면 별개로 취급(분원명 병기) */
+function allTeachers(semId){
+  const out = [];
+  db.branches.forEach(b=>{
+    teachersOf(b.id, semId).forEach(t=>{
+      out.push({ ...t, branchId:b.id, branchName:b.name });
+    });
+  });
+  return out;
 }
 
 /* 한 담임의 반별 집계 */
@@ -308,7 +327,7 @@ function classesOf(branchId, semId, teacher){
 /* ============================================================================
    4. 앱 상태 & 라우터
    ============================================================================ */
-const state = { semId:null, route:null };
+const state = { semId:null, route:null, branchSort:'active', teacherSort:'rate_desc', classSort:'rate_desc', allTeacherSort:'wrate_desc' };
 
 const el = id => document.getElementById(id);
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -528,30 +547,64 @@ function renderAdminDashboard(){
     const rates = calcRates(activeRecordsOf(b.id, semId), b.id, semId);
     tot.start+=hc.start; tot.newCnt+=hc.newCnt; tot.withdraw+=hc.withdraw;
     tot.active+=hc.active; tot.net+=hc.net;
-    return { b, hc, rates };
+    // 분원 퇴원율 = 퇴원 / (재원+퇴원)
+    const wbase = hc.active + hc.withdraw;
+    const withdrawRate = wbase>0 ? Math.round(hc.withdraw/wbase*100) : 0;
+    return { b, hc, rates, withdrawRate };
   });
+  const totWbase = tot.active + tot.withdraw;
+  const totWithdrawRate = totWbase>0 ? Math.round(tot.withdraw/totWbase*100) : 0;
 
   let html = `
     <div class="page-head">
       <h2>통합 대시보드</h2>
       <div class="sub">6개 분원 통합 현황 · ${esc(db.semesters.find(s=>s.id===semId).name)}</div>
     </div>
-    <div class="kpi-row c4">
+    <div class="kpi-row c5">
       ${kpiCard('전체 학기초 인원', tot.start, {unit:'명'})}
       ${kpiCard('전체 신규생', tot.newCnt, {unit:'명'})}
       ${kpiCard('전체 퇴원생', tot.withdraw, {unit:'명'})}
+      ${kpiCard('전체 퇴원율', totWithdrawRate, {unit:'%'})}
       ${kpiCard('현 재원생', tot.active, {unit:'명', accent:true})}
     </div>
-    <div class="sect-head"><h3>분원별 현황</h3><span class="cnt">${cards.length}개 분원 · 카드를 클릭하면 분원 상세로 이동</span></div>
+    <div class="sect-head">
+      <h3>분원별 현황</h3>
+      <div class="sort-bar">
+        ${branchSortBtn('active','재원생순')}
+        ${branchSortBtn('new','신규순')}
+        ${branchSortBtn('withdraw','퇴원순')}
+        ${branchSortBtn('wrate','퇴원율순')}
+        ${branchSortBtn('rate','상담률순')}
+      </div>
+    </div>
     <div class="card-grid g3">`;
 
-  html += cards.map(({b,hc,rates})=>{
+  // 정렬
+  const sortKey = state.branchSort;
+  const val = c => sortKey==='active' ? c.hc.active
+            : sortKey==='new' ? c.hc.newCnt
+            : sortKey==='withdraw' ? c.hc.withdraw
+            : sortKey==='wrate' ? c.withdrawRate
+            : c.rates.totalRate; // rate
+  cards.sort((a,b)=> val(b)-val(a));
+  // 상담률순일 때만 최고/최저 강조 (데이터 있는 카드 기준)
+  const rated = cards.filter(c=> c.hc.active>0);
+  const bestId = (sortKey==='rate' && rated.length) ? rated[0].b.id : null;
+  const worstId = (sortKey==='rate' && rated.length>1) ? rated[rated.length-1].b.id : null;
+
+  html += cards.map(({b,hc,rates,withdrawRate}, i)=>{
     const hasData = hc.active>0 || hc.start>0;
-    return `<div class="card clickable" onclick="go('admin/branch/${b.id}')">
+    const rank = i+1;
+    const rankCls = rank===1?'r1':rank===2?'r2':rank===3?'r3':'';
+    const cardCls = b.id===bestId?' best' : b.id===worstId?' worst' : '';
+    const wrColor = withdrawRate>=15?'var(--neg)':withdrawRate>=8?'var(--warn)':'var(--ink-2)';
+    return `<div class="card clickable${cardCls}" onclick="go('admin/branch/${b.id}')">
+      <div class="rank-badge ${rankCls}">${rank}</div>
       <div class="card-top">
         <div>
-          <div class="card-name">${esc(b.name)}</div>
-          <div class="card-sub">재원 ${hc.active}명 · 신규 ${hc.newCnt} · 퇴원 ${hc.withdraw}</div>
+          <div class="card-name">${esc(b.name)}
+            ${b.id===bestId?'<span class="tag-best">최고</span>':b.id===worstId?'<span class="tag-worst">최저</span>':''}</div>
+          <div class="card-sub">재원 ${hc.active}명 · 신규 <b style="color:var(--brand)">${hc.newCnt}</b> · 퇴원 <b style="color:${wrColor}">${hc.withdraw}</b> <span style="color:${wrColor}">(${withdrawRate}%)</span></div>
         </div>
         <div class="card-rate">
           <div class="r num" style="color:${hasData?rateColor(rates.totalRate):'var(--ink-3)'}">${hasData?rates.totalRate+'%':'–'}</div>
@@ -571,8 +624,68 @@ function renderAdminDashboard(){
     </div>`;
   }).join('');
   html += `</div>`;
+
+  // ===== 전 분원 통합 담임 순위 =====
+  const allT = allTeachers(semId);
+  html += `
+    <div class="sect-head">
+      <h3>전 분원 담임 순위</h3>
+      <div class="sort-bar">
+        ${allTeacherSortBtn('rate_desc','상담률순')}
+        ${allTeacherSortBtn('wrate_desc','퇴원율 높은순')}
+        ${allTeacherSortBtn('withdraw_desc','퇴원수 많은순')}
+        ${allTeacherSortBtn('students_desc','학생수순')}
+      </div>
+    </div>`;
+  if(allT.length===0){
+    html += emptyState('아직 데이터가 없습니다','각 분원이 명단을 업로드하면 전체 담임 순위가 표시됩니다.');
+  } else {
+    const k = state.allTeacherSort;
+    if(k==='wrate_desc') allT.sort((a,b)=> b.withdrawRate-a.withdrawRate || b.withdrawCnt-a.withdrawCnt);
+    else if(k==='withdraw_desc') allT.sort((a,b)=> b.withdrawCnt-a.withdrawCnt);
+    else if(k==='students_desc') allT.sort((a,b)=> b.studentCount-a.studentCount);
+    else allT.sort((a,b)=> b.rates.totalRate-a.rates.totalRate);
+    html += `<div class="table-wrap"><div class="table-scroll">
+      <table class="rank-table">
+        <thead><tr>
+          <th class="cc">순위</th><th>담임</th><th>분원</th>
+          <th class="cc">반</th><th class="cc">학생</th>
+          <th class="cc">퇴원</th><th class="rt">퇴원율</th><th class="rt">상담률</th>
+        </tr></thead>
+        <tbody>
+        ${allT.map((t,i)=>{
+          const rank=i+1, rk=rank===1?'r1':rank===2?'r2':rank===3?'r3':'';
+          const wrColor = t.withdrawRate>=15?'var(--neg)':t.withdrawRate>=8?'var(--warn)':'var(--ink-3)';
+          return `<tr onclick="enterTeacher('${t.branchId}','${encodeURIComponent(t.teacher)}')">
+            <td class="cc"><span class="rk ${rk}">${rank}</span></td>
+            <td class="nm">${esc(t.teacher)}</td>
+            <td><span class="branch-chip">${esc(t.branchName)}</span></td>
+            <td class="cc">${t.classCount}</td>
+            <td class="cc">${t.studentCount}</td>
+            <td class="cc"><span class="wd-pill" style="color:${wrColor}">${t.withdrawCnt}</span></td>
+            <td class="rt"><span class="wd-pill" style="color:${wrColor}">${t.withdrawRate}%</span></td>
+            <td class="rt"><div class="cell-rate">
+              <div class="mini-track"><div class="mini-fill" style="width:${t.rates.totalRate}%;background:${rateColor(t.rates.totalRate)}"></div></div>
+              <span class="pct" style="color:${rateColor(t.rates.totalRate)}">${t.rates.totalRate}%</span>
+            </div></td>
+          </tr>`;
+        }).join('')}
+        </tbody>
+      </table>
+    </div></div>
+    <div style="margin-top:10px;font-size:12px;color:var(--ink-3)">행을 클릭하면 해당 담임 상세로 이동합니다. 퇴원율 = 퇴원 ÷ (현재 재원 + 퇴원).</div>`;
+  }
+
   el('content').innerHTML = html;
 }
+function branchSortBtn(key, label){
+  return `<button class="sb-btn ${state.branchSort===key?'on':''}" onclick="setBranchSort('${key}')">${label}</button>`;
+}
+function setBranchSort(key){ state.branchSort=key; render(); }
+function allTeacherSortBtn(key,label){
+  return `<button class="sb-btn ${state.allTeacherSort===key?'on':''}" onclick="setAllTeacherSort('${key}')">${label}</button>`;
+}
+function setAllTeacherSort(key){ state.allTeacherSort=key; render(); }
 
 /* ============================================================================
    10. 관리자 — 분원 상세 (담임별 현황)
@@ -601,30 +714,33 @@ function renderAdminBranchDetail(branchId){
     </div>
     <div class="sect-head"><h3>전체 상담 진행률</h3></div>
     ${ratePanel(brate)}
-    <div class="sect-head"><h3>담임별 현황</h3><span class="cnt">${teachers.length}명 · 카드를 클릭하면 담임 상세로 이동</span></div>`;
+    <div class="sect-head"><h3>담임별 현황</h3>
+      ${teachers.length?teacherCardsSection(teachers, branchId, 'admin').sortBar:''}</div>`;
 
   if(teachers.length===0){
     html += emptyState('아직 데이터가 없습니다', '해당 분원이 전체명단을 업로드하면 담임별 현황이 표시됩니다.');
   } else {
-    html += `<div class="card-grid g3">` + teachers.map(t=> teacherCard(t, branchId, 'admin')).join('') + `</div>`;
+    html += `<div class="card-grid g3">` + teacherCardsSection(teachers, branchId, 'admin').cards + `</div>`;
   }
   el('content').innerHTML = html;
 }
 
 /* 담임 카드 (관리자/분원 공용) — adminMode면 클릭 비활성(관리자는 담임상세 미진입 사양상 선택)
    사양: 관리자 분원상세 "담임 카드 클릭 → 담임 상세". 분원도 동일. 둘 다 진입 허용. */
-function teacherCard(t, branchId, ctx){
+function teacherCard(t, branchId, ctx, rank, mark){
   const r = t.rates;
-  // 관리자/분원 모두 담임 카드 클릭 → 담임 상세 진입.
-  // 관리자는 viewBranchId 컨텍스트를 세팅한 뒤 진입해야 하므로 enterTeacher() 경유.
   const onclick = ctx==='admin'
     ? `enterTeacher('${branchId}','${encodeURIComponent(t.teacher)}')`
     : `go('branch/teacher/${encodeURIComponent(t.teacher)}')`;
-  return `<div class="card clickable" onclick="${onclick}">
+  const rankCls = rank===1?'r1':rank===2?'r2':rank===3?'r3':'';
+  const cardCls = mark==='best'?' best' : mark==='worst'?' worst' : '';
+  const tag = mark==='best'?'<span class="tag-best">최고</span>' : mark==='worst'?'<span class="tag-worst">최저</span>' : '';
+  return `<div class="card clickable${cardCls}" onclick="${onclick}">
+    ${rank?`<div class="rank-badge ${rankCls}">${rank}</div>`:''}
     <div class="card-top">
       <div>
-        <div class="card-name">${esc(t.teacher)}</div>
-        <div class="card-sub">학생 ${t.studentCount}명 · 반 ${t.classCount}개</div>
+        <div class="card-name">${esc(t.teacher)} ${tag}</div>
+        <div class="card-sub">학생 ${t.studentCount}명 · 반 ${t.classCount}개${t.withdrawCnt?` · 퇴원 <b style="color:${t.withdrawRate>=15?'var(--neg)':t.withdrawRate>=8?'var(--warn)':'var(--ink-2)'}">${t.withdrawCnt}명 (${t.withdrawRate}%)</b>`:''}</div>
       </div>
       <div class="card-rate">
         <div class="r num" style="color:${rateColor(r.totalRate)}">${r.totalRate}%</div>
@@ -638,6 +754,36 @@ function teacherCard(t, branchId, ctx){
     </div>
   </div>`;
 }
+
+/* 담임 카드 묶음 — 정렬 버튼 + 순위 + 최고/최저 강조 */
+function teacherCardsSection(teachers, branchId, ctx){
+  const sortBar = `<div class="sort-bar">
+    ${teacherSortBtn('rate_desc','상담률 높은순')}
+    ${teacherSortBtn('rate_asc','낮은순')}
+    ${teacherSortBtn('incomplete','미완료 많은순')}
+    ${teacherSortBtn('name','이름순')}
+  </div>`;
+  const key = state.teacherSort;
+  const arr = [...teachers];
+  if(key==='rate_desc') arr.sort((a,b)=> b.rates.totalRate-a.rates.totalRate);
+  else if(key==='rate_asc') arr.sort((a,b)=> a.rates.totalRate-b.rates.totalRate);
+  else if(key==='incomplete') arr.sort((a,b)=> b.rates.incompleteStudents-a.rates.incompleteStudents);
+  else arr.sort((a,b)=> a.teacher.localeCompare(b.teacher,'ko'));
+  // 최고/최저는 상담률 기준(정렬 무관하게 고정 표시)
+  const byRate = [...teachers].sort((a,b)=> b.rates.totalRate-a.rates.totalRate);
+  const bestT = byRate.length ? byRate[0].teacher : null;
+  const worstT = byRate.length>1 ? byRate[byRate.length-1].teacher : null;
+  const cards = arr.map((t,i)=>{
+    const rank = (key==='rate_desc') ? i+1 : null; // 상담률 높은순일 때만 1,2,3 표시
+    const mark = t.teacher===bestT?'best' : t.teacher===worstT?'worst' : null;
+    return teacherCard(t, branchId, ctx, rank, mark);
+  }).join('');
+  return { sortBar, cards };
+}
+function teacherSortBtn(key,label){
+  return `<button class="sb-btn ${state.teacherSort===key?'on':''}" onclick="setTeacherSort('${key}')">${label}</button>`;
+}
+function setTeacherSort(key){ state.teacherSort=key; render(); }
 
 /* 관리자 분원상세에서 담임 진입 — 컨텍스트 분원 고정 후 라우트 이동 */
 function enterTeacher(branchId, teacherEnc){
@@ -680,12 +826,13 @@ function renderBranchDashboard(){
     </div>
     <div class="sect-head"><h3>전체 상담률</h3><span class="cnt">단계별 진행 현황</span></div>
     ${ratePanel(rates)}
-    <div class="sect-head"><h3>담임별 현황</h3><span class="cnt">${teachers.length}명 · 카드를 클릭하면 담임 상세로 이동</span></div>`;
+    <div class="sect-head"><h3>담임별 현황</h3>
+      ${teachers.length?teacherCardsSection(teachers, branchId, 'branch').sortBar:''}</div>`;
 
   if(teachers.length===0){
     html += emptyState('아직 데이터가 없습니다', '데이터관리 메뉴에서 전체명단과 상담이력을 업로드하면 현황이 표시됩니다.');
   } else {
-    html += `<div class="card-grid g3">` + teachers.map(t=> teacherCard(t, branchId, 'branch')).join('') + `</div>`;
+    html += `<div class="card-grid g3">` + teacherCardsSection(teachers, branchId, 'branch').cards + `</div>`;
   }
   el('content').innerHTML = html;
 }
@@ -724,15 +871,36 @@ function renderTeacherDetail(teacher){
     </div>
     <div class="sect-head"><h3>담임 전체 상담 진행률</h3></div>
     ${ratePanel(rates)}
-    <div class="sect-head"><h3>담당 반 목록</h3><span class="cnt">${classCount}개 반 · 카드를 클릭하면 반 상세로 이동</span></div>
+    <div class="sect-head"><h3>담당 반 목록</h3>
+      <div class="sort-bar">
+        ${classSortBtn('rate_desc','상담률 높은순')}
+        ${classSortBtn('rate_asc','낮은순')}
+        ${classSortBtn('name','반이름순')}
+      </div></div>
     <div class="card-grid g4">`;
 
-  html += classes.map(cls=>{
+  // 반 정렬
+  const ckey = state.classSort;
+  const arr = [...classes];
+  if(ckey==='rate_desc') arr.sort((a,b)=> b.rates.totalRate-a.rates.totalRate);
+  else if(ckey==='rate_asc') arr.sort((a,b)=> a.rates.totalRate-b.rates.totalRate);
+  else arr.sort((a,b)=> a.label.localeCompare(b.label,'ko'));
+  const byRate = [...classes].sort((a,b)=> b.rates.totalRate-a.rates.totalRate);
+  const bestC = byRate.length?byRate[0].className:null;
+  const worstC = byRate.length>1?byRate[byRate.length-1].className:null;
+
+  html += arr.map((cls,i)=>{
     const r = cls.rates;
-    return `<div class="card clickable" onclick="go('branch/class/${encodeURIComponent(teacher)}/${encodeURIComponent(cls.className)}')">
+    const rank = (ckey==='rate_desc')?i+1:null;
+    const rankCls = rank===1?'r1':rank===2?'r2':rank===3?'r3':'';
+    const mark = cls.className===bestC?'best':cls.className===worstC?'worst':null;
+    const cardCls = mark==='best'?' best':mark==='worst'?' worst':'';
+    const tag = mark==='best'?'<span class="tag-best">최고</span>':mark==='worst'?'<span class="tag-worst">최저</span>':'';
+    return `<div class="card clickable${cardCls}" onclick="go('branch/class/${encodeURIComponent(teacher)}/${encodeURIComponent(cls.className)}')">
+      ${rank?`<div class="rank-badge ${rankCls}">${rank}</div>`:''}
       <div class="card-top">
         <div>
-          <div class="card-name">${esc(cls.label)}</div>
+          <div class="card-name">${esc(cls.label)} ${tag}</div>
           <div class="card-sub">학생 ${cls.studentCount}명</div>
         </div>
         <div class="card-rate">
@@ -747,6 +915,10 @@ function renderTeacherDetail(teacher){
   html += `</div>`;
   el('content').innerHTML = html;
 }
+function classSortBtn(key,label){
+  return `<button class="sb-btn ${state.classSort===key?'on':''}" onclick="setClassSort('${key}')">${label}</button>`;
+}
+function setClassSort(key){ state.classSort=key; render(); }
 
 /* ============================================================================
    13. 반 상세 — 엑셀형 상담표
@@ -1074,20 +1246,14 @@ function renderStudentManagement(){
           <div><h3>퇴원 처리</h3></div>
         </div>
         <div class="pd">학생 상태를 재원→퇴원으로 변경합니다. 현재 재원생 수에서 제외되지만 과거 데이터와 상담이력은 보존됩니다.</div>
-        <div class="field full" style="margin-bottom:10px">
-          <label>학생 선택</label>
-          <select id="wdSelect">
-            <option value="">재원생 선택…</option>
-            ${recs.filter(r=>r.status==='active').sort((a,b)=>{
-                const sa=getStudent(a.studentId),sb=getStudent(b.studentId);
-                return (sa?sa.name:'').localeCompare(sb?sb.name:'','ko');
-              }).map(r=>{
-              const s=getStudent(r.studentId);
-              return `<option value="${r.id}">${esc(s.name)} (${esc(s.code)}) · ${esc(r.classLabel||r.className)} · ${esc(r.teacher)}</option>`;
-            }).join('')}
-          </select>
+        <div class="field full" style="margin-bottom:8px">
+          <label>학생 검색 (이름 또는 회원코드)</label>
+          <input id="wdSearch" placeholder="예: 김태양" autocomplete="off" oninput="renderWdResults()">
         </div>
-        <div class="field full" style="margin-bottom:10px">
+        <div id="wdResults" class="wd-results"></div>
+        <input type="hidden" id="wdSelect" value="">
+        <div id="wdPicked" class="wd-picked" style="display:none"></div>
+        <div class="field full" style="margin:10px 0">
           <label>사유 (선택)</label><input id="wdMemo" placeholder="예: 타지역 이사">
         </div>
         <button class="btn" style="width:100%;border-color:var(--neg-soft);color:var(--neg)" onclick="withdrawStudent()">퇴원 처리</button>
@@ -1524,10 +1690,64 @@ function addNewStudent(){
   db.studentMovements.push({id:uid('mv'),studentId:stu.id,branchId,semesterId:semId,type:'new',date:enrollDate,memo:'수동 등록'});
   saveDB(); toast(`${name} 신규생 등록 완료`,'ok'); render();
 }
+
+/* 퇴원 처리 — 이름/코드 검색 결과 렌더 (동명이인 구분 위해 코드·반·담임 표시) */
+function renderWdResults(){
+  const branchId=session.branchId, semId=state.semId;
+  const q = (el('wdSearch').value||'').trim().toLowerCase();
+  const box = el('wdResults');
+  if(!q){ box.innerHTML=''; return; }
+  const matches = activeRecordsOf(branchId, semId).filter(r=>{
+    const s=getStudent(r.studentId); if(!s) return false;
+    return s.name.toLowerCase().includes(q) || (s.code||'').toLowerCase().includes(q);
+  }).sort((a,b)=>{
+    const sa=getStudent(a.studentId), sb=getStudent(b.studentId);
+    return (sa?sa.name:'').localeCompare(sb?sb.name:'','ko');
+  });
+  if(matches.length===0){
+    box.innerHTML = `<div class="wd-empty">검색 결과가 없습니다</div>`; return;
+  }
+  box.innerHTML = matches.slice(0,30).map(r=>{
+    const s=getStudent(r.studentId);
+    return `<div class="wd-item" onclick="pickWdStudent('${r.id}')">
+      <div class="wd-main">
+        <span class="wd-name">${esc(s.name)}</span>
+        <span class="code-chip">${esc(s.code)}</span>
+      </div>
+      <div class="wd-meta">${esc(r.classLabel||r.className)} · ${esc(r.teacher)} 담임 · ${esc(s.school||'')} ${esc(s.grade||'')}${s.grade?'학년':''}</div>
+    </div>`;
+  }).join('');
+}
+/* 검색 결과에서 학생 선택 → 확정 표시 */
+function pickWdStudent(recId){
+  const rec=db.semesterRecords.find(r=>r.id===recId);
+  if(!rec) return;
+  const s=getStudent(rec.studentId);
+  el('wdSelect').value = recId;
+  el('wdResults').innerHTML = '';
+  el('wdSearch').value = s.name;
+  const picked = el('wdPicked');
+  picked.style.display='block';
+  picked.innerHTML = `<div class="wd-picked-card">
+    <div>
+      <div class="wd-picked-name">선택됨: <b>${esc(s.name)}</b> <span class="code-chip">${esc(s.code)}</span></div>
+      <div class="wd-meta">${esc(rec.classLabel||rec.className)} · ${esc(rec.teacher)} 담임</div>
+    </div>
+    <button class="btn sm" onclick="clearWdPick()">취소</button>
+  </div>`;
+}
+function clearWdPick(){
+  el('wdSelect').value='';
+  el('wdPicked').style.display='none';
+  el('wdPicked').innerHTML='';
+  el('wdSearch').value='';
+  el('wdResults').innerHTML='';
+}
 function withdrawStudent(){
   const recId=el('wdSelect').value;
-  if(!recId){ toast('학생을 선택하세요','err'); return; }
+  if(!recId){ toast('학생을 검색해서 선택하세요','err'); return; }
   const rec=db.semesterRecords.find(r=>r.id===recId);
+  if(!rec){ toast('학생을 다시 선택하세요','err'); return; }
   rec.status='withdraw';
   const stu=getStudent(rec.studentId);
   db.studentMovements.push({id:uid('mv'),studentId:rec.studentId,branchId:rec.branchId,semesterId:rec.semesterId,

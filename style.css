@@ -139,9 +139,34 @@ a{color:inherit;text-decoration:none}
    섹션 타이틀
    ============================================================ */
 .sect-head{display:flex;align-items:center;justify-content:space-between;
-  margin:24px 0 13px}
+  margin:24px 0 13px;gap:12px;flex-wrap:wrap}
 .sect-head h3{font-size:15px;font-weight:650;letter-spacing:-.2px}
 .sect-head .cnt{font-size:12px;color:var(--ink-3);font-weight:500}
+
+/* 정렬 세그먼트 토글 */
+.sort-bar{display:inline-flex;align-items:center;gap:2px;background:var(--surface-2);
+  border:1px solid var(--line);border-radius:9px;padding:3px}
+.sort-bar .sb-btn{border:none;background:none;font-size:12px;font-weight:600;color:var(--ink-3);
+  padding:5px 10px;border-radius:6px;cursor:pointer;transition:.12s;white-space:nowrap}
+.sort-bar .sb-btn:hover{color:var(--ink)}
+.sort-bar .sb-btn.on{background:var(--surface);color:var(--brand);box-shadow:var(--shadow-sm)}
+
+/* 순위 뱃지 (카드 좌상단) */
+.rank-badge{position:absolute;top:-8px;left:-8px;width:26px;height:26px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;
+  color:#fff;background:var(--ink-3);box-shadow:var(--shadow-sm);z-index:2}
+.rank-badge.r1{background:linear-gradient(135deg,#f5b50a,#e89400)}
+.rank-badge.r2{background:linear-gradient(135deg,#9fb0c4,#7e8ea3)}
+.rank-badge.r3{background:linear-gradient(135deg,#c98a5a,#b06f3c)}
+.rank-badge.low{background:var(--neg)}
+.card{position:relative}
+/* 최고/최저 강조 테두리 */
+.card.best{border-color:var(--pos);box-shadow:0 0 0 1px var(--pos),var(--shadow-sm)}
+.card.worst{border-color:var(--neg);box-shadow:0 0 0 1px var(--neg-soft),var(--shadow-sm)}
+.tag-best,.tag-worst{display:inline-flex;align-items:center;gap:3px;font-size:10.5px;font-weight:700;
+  padding:2px 7px;border-radius:20px}
+.tag-best{color:var(--pos);background:var(--pos-soft)}
+.tag-worst{color:var(--neg);background:var(--neg-soft)}
 
 /* ============================================================
    카드 그리드 (분원/담임/반 — 균일 크기)
@@ -211,6 +236,42 @@ table.grid td{padding:9px 12px;border-bottom:1px solid var(--line-2);vertical-al
 table.grid tr:last-child td{border-bottom:none}
 table.grid tbody tr:hover{background:var(--surface-2)}
 table.grid th.cc,table.grid td.cc{text-align:center}
+
+/* 순위 테이블 (전 분원 담임/분원 순위) */
+table.rank-table{width:100%;border-collapse:collapse;font-size:13px}
+table.rank-table th{background:var(--surface-2);text-align:left;font-weight:650;font-size:11px;
+  color:var(--ink-3);padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+table.rank-table th.cc,table.rank-table td.cc{text-align:center}
+table.rank-table th.rt,table.rank-table td.rt{text-align:right}
+table.rank-table td{padding:10px 12px;border-bottom:1px solid var(--line-2);vertical-align:middle;white-space:nowrap}
+table.rank-table tbody tr{cursor:pointer;transition:.1s}
+table.rank-table tbody tr:hover{background:var(--brand-soft)}
+table.rank-table tbody tr:last-child td{border-bottom:none}
+.rk{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;
+  font-size:12px;font-weight:800;color:#fff;background:var(--ink-3)}
+.rk.r1{background:linear-gradient(135deg,#f5b50a,#e89400)}
+.rk.r2{background:linear-gradient(135deg,#9fb0c4,#7e8ea3)}
+.rk.r3{background:linear-gradient(135deg,#c98a5a,#b06f3c)}
+.cell-rate{display:inline-flex;align-items:center;gap:8px;justify-content:flex-end}
+.cell-rate .mini-track{width:54px;height:6px;background:var(--line-2);border-radius:4px;overflow:hidden}
+.cell-rate .mini-fill{height:100%;border-radius:4px}
+.cell-rate .pct{font-weight:700;font-variant-numeric:tabular-nums;min-width:36px;text-align:right}
+.wd-pill{font-size:11.5px;font-weight:700;font-variant-numeric:tabular-nums}
+.branch-chip{font-size:11px;color:var(--ink-3);background:var(--surface-2);padding:2px 7px;border-radius:5px}
+.rank-table .nm{font-weight:650}
+
+/* 퇴원 학생 검색 결과 */
+.wd-results{display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto}
+.wd-results:not(:empty){margin-bottom:8px}
+.wd-item{border:1px solid var(--line);border-radius:9px;padding:9px 12px;cursor:pointer;transition:.1s;background:var(--surface)}
+.wd-item:hover{border-color:var(--brand);background:var(--brand-soft)}
+.wd-main{display:flex;align-items:center;gap:8px}
+.wd-name{font-weight:650;font-size:13.5px}
+.wd-meta{font-size:11.5px;color:var(--ink-3);margin-top:3px}
+.wd-empty{padding:12px;color:var(--ink-3);font-size:12.5px;text-align:center}
+.wd-picked-card{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  border:1px solid var(--pos);background:var(--pos-soft);border-radius:9px;padding:10px 12px}
+.wd-picked-name{font-size:13.5px}
 .st-name{font-weight:600}
 .st-meta{font-size:11.5px;color:var(--ink-3);margin-top:1px}
 .code-chip{font-family:var(--mono);font-size:11px;color:var(--ink-2);background:var(--surface-2);
