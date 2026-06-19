@@ -109,14 +109,24 @@ function initSupabase(){
   return sb;
 }
 
-/* 서버에서 전체 데이터 읽기 → 메모리 db */
+/* 서버에서 전체 데이터 읽기 → 메모리 db.
+   Supabase는 한 요청에 최대 1000행만 주므로, range()로 끝까지 페이지를 넘기며 전부 가져옴. */
 async function loadDB(){
   initSupabase();
   db = blankDB();
+  const PAGE = 1000;
   for(const t of TABLES){
-    const { data, error } = await sb.from(t.table).select('*');
-    if(error){ console.error('load fail', t.table, error); throw error; }
-    db[t.key] = (data||[]).map(t.fromRow);
+    let all = [];
+    let from = 0;
+    while(true){
+      const { data, error } = await sb.from(t.table).select('*').range(from, from+PAGE-1);
+      if(error){ console.error('load fail', t.table, error); throw error; }
+      const chunk = data || [];
+      all = all.concat(chunk);
+      if(chunk.length < PAGE) break;   // 마지막 페이지 (1000개 미만이면 끝)
+      from += PAGE;
+    }
+    db[t.key] = all.map(t.fromRow);
   }
   // 학기 자동 보강 (현재+직전 학기). 새로 추가된 학기는 서버에도 저장.
   ensureSemesters();
