@@ -374,15 +374,18 @@ function monthlyClosing(recs, months){
     const newThis = recs.filter(r=> enrollMonth(r)===m).length;
     const monthStart = idx===0 ? startOfSem : carry;
     const baseNew = monthStart + newThis;
-    const wdThis = recs.filter(r=> withdrawMonth(r)===m).length;
+    // 그 달 이탈 = 순수 퇴원 + 전출. 단 퇴원율엔 순수 퇴원만 반영.
+    const wdThis = recs.filter(r=> withdrawMonth(r)===m && !r.transfer).length;   // 순수 퇴원
+    const trThis = recs.filter(r=> withdrawMonth(r)===m && r.transfer).length;    // 전출
     const rate = baseNew>0 ? (wdThis/baseNew*100) : 0;
-    cells.push({ month:m, baseNew, withdraw:wdThis, rate });
+    cells.push({ month:m, baseNew, withdraw:wdThis, transfer:trThis, rate });
     if(baseNew>0) rates.push(rate);   // 인원 0인 달은 평균에서 제외
-    carry = baseNew - wdThis;
+    carry = baseNew - wdThis - trThis; // 다음 달 월초 = 이번달 - (퇴원+전출)
   });
   const totWithdraw = cells.reduce((a,c)=>a+c.withdraw,0);
+  const totTransfer = cells.reduce((a,c)=>a+c.transfer,0);
   const avgRate = rates.length ? rates.reduce((a,c)=>a+c,0)/rates.length : 0;
-  return { cells, totWithdraw, avgRate };
+  return { cells, totWithdraw, totTransfer, avgRate };
 }
 /* 학생이 특정 단계 상담 대상인지 — 입학월 기준
    HC1/HC2: 신규·복귀생이면 입학월 상관없이 대상
@@ -504,7 +507,7 @@ function classesOf(branchId, semId, teacher){
 /* ============================================================================
    4. 앱 상태 & 라우터
    ============================================================================ */
-const state = { semId:null, route:null, branchSort:'active', teacherSort:'rate_desc', classSort:'rate_desc', allTeacherSort:'rate_desc', rosterTab:'new' };
+const state = { semId:null, route:null, branchSort:'active', teacherSort:'rate_desc', classSort:'rate_desc', allTeacherSort:'rate_desc', rosterTab:'new', closingTab:'teacher' };
 
 const el = id => document.getElementById(id);
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -1492,31 +1495,36 @@ function renderClosing(branchId){
   if(!b){ go(isAdmin?'closing':'branch'); return; }
   const semId = state.semId;
   const months = semesterMonths(semId);
+  const tab = state.closingTab || 'teacher';
 
   if(isAdmin) crumbs([{label:'인원마감표', go:'closing'},{label:b.name}]);
   else crumbs([{label:'인원마감표'}]);
 
   const recs = recordsOf(branchId, semId);
 
-  // 강사별 그룹
-  const teacherMap = new Map();
-  recs.forEach(r=>{
-    const t = r.teacher||'미배정';
-    if(!teacherMap.has(t)) teacherMap.set(t, []);
-    teacherMap.get(t).push(r);
-  });
-  const teacherGroups = [...teacherMap.entries()].map(([name,recs])=>({name,recs}))
-    .sort((a,b)=> b.recs.length - a.recs.length);
+  // 탭별 그룹 구성
+  let groups, firstCol, note='';
+  if(tab==='teacher'){
+    const m = new Map();
+    recs.forEach(r=>{ const t=r.teacher||'미배정'; if(!m.has(t)) m.set(t,[]); m.get(t).push(r); });
+    groups = [...m.entries()].map(([name,recs])=>({name,recs})).sort((a,b)=> b.recs.length-a.recs.length);
+    firstCol = '강사명';
+  } else if(tab==='level'){
+    // 레벨(수업) 기준 — CHESS/ACE 등은 항상 반 레벨로 카운트 (학년 아님)
+    const m = new Map();
+    recs.forEach(r=>{ const lv=classLevel(r.className||'')||'기타'; if(!m.has(lv)) m.set(lv,[]); m.get(lv).push(r); });
+    groups = [...m.entries()].map(([name,recs])=>({name,recs})).sort((a,b)=> a.name.localeCompare(b.name));
+    firstCol = '레벨';
+  } else { // grade — 진짜 학년 기준
+    const m = new Map();
+    recs.forEach(r=>{ const s=getStudent(r.studentId); const gk=gradeKey(s)||'미상'; if(!m.has(gk)) m.set(gk,[]); m.get(gk).push(r); });
+    groups = [...m.entries()].map(([name,recs])=>({name,recs}))
+      .sort((a,b)=> gradeOrder(a.name)-gradeOrder(b.name));
+    firstCol = '학년';
+    note = '※ 학년 기준 집계입니다. 초5 중 일부는 레벨이 높아 CHESS가 아닌 ACE 수업을 듣고 있어, 강사별·레벨별 표의 숫자와 다를 수 있습니다.';
+  }
 
-  // 레벨별 그룹
-  const levelMap = new Map();
-  recs.forEach(r=>{
-    const lv = classLevel(r.className||'') || '기타';
-    if(!levelMap.has(lv)) levelMap.set(lv, []);
-    levelMap.get(lv).push(r);
-  });
-  const levelGroups = [...levelMap.entries()].map(([name,recs])=>({name,recs}))
-    .sort((a,b)=> a.name.localeCompare(b.name));
+  const tabBtn = (key,label)=>`<button class="sb-btn ${tab===key?'on':''}" onclick="setClosingTab('${key}')">${label}</button>`;
 
   let html = `
     ${isAdmin?backLink('인원마감표','closing'):''}
@@ -1524,15 +1532,19 @@ function renderClosing(branchId){
       <h2>${esc(b.name)} 인원마감표</h2>
       <div class="sub">${esc(db.semesters.find(s=>s.id===semId).name)} · 월별 퇴원현황 (월초+신규 / 퇴원 / 퇴원율)</div>
     </div>
-    <div class="sect-head"><h3>강사별 퇴원현황</h3></div>
-    ${closingTable(teacherGroups, months, '강사명')}
-    <div class="sect-head" style="margin-top:28px"><h3>레벨별 퇴원현황</h3></div>
-    ${closingTable(levelGroups, months, '레벨')}
+    <div class="sort-bar" style="margin-bottom:16px">
+      ${tabBtn('teacher','강사별')}
+      ${tabBtn('level','레벨별')}
+      ${tabBtn('grade','학년별')}
+    </div>
+    ${closingTable(groups, months, firstCol)}
+    ${note?`<div class="closing-note">${esc(note)}</div>`:''}
     <div style="margin-top:12px;font-size:12px;color:var(--ink-3)">
-      월초+신규 = 그 달 시작 인원 + 그 달 신규 · 퇴원율 = 퇴원 ÷ (월초+신규) · 평균퇴원율 = 월별 퇴원율의 평균
+      월초+신규 = 그 달 시작 인원 + 그 달 신규 · 퇴원율 = 퇴원 ÷ (월초+신규) · 평균퇴원율 = 월별 퇴원율의 평균 · 전출은 퇴원에서 제외됩니다.
     </div>`;
   el('content').innerHTML = html;
 }
+function setClosingTab(tab){ state.closingTab=tab; render(); }
 
 /* ============================================================================
    15. 분원 — 데이터관리 (엑셀 업로드 전용)
@@ -2050,6 +2062,30 @@ function isRealClass(raw){
 function classLevel(raw){
   const m = String(raw||'').match(/^\s*\[([A-Za-z]+[0-9]*)/);  // 대괄호 직후 영문+숫자 = 레벨
   return m ? m[1] : '';
+}
+/* 학생의 '학년' 칸에서 표준 학년키 추출 → '초1'~'초6','중1'~'중3' (없으면 '') .
+   "초등6","초6","6학년","중등2","중2" 등 다양한 표기 흡수. */
+function gradeKey(s){
+  const g = String((s&&s.grade)||'').replace(/\s/g,'');
+  if(!g) return '';
+  // 중등 먼저
+  let m = g.match(/중(?:등)?\s*([1-3])/);
+  if(m) return '중'+m[1];
+  m = g.match(/초(?:등)?\s*([1-6])/);
+  if(m) return '초'+m[1];
+  // 숫자만 있는 경우는 판단 불가(초/중 모름) → 빈값
+  return '';
+}
+/* 학년키 → 초등/중등 구분 (학년 기준: 초1~5=초등, 초6~중3=중등) */
+function gradeBand(key){
+  if(/^초[1-5]$/.test(key)) return '초등';
+  if(/^초6$/.test(key) || /^중[1-3]$/.test(key)) return '중등';
+  return '기타';
+}
+/* 정렬용 학년 순서 */
+function gradeOrder(key){
+  const map={'초1':1,'초2':2,'초3':3,'초4':4,'초5':5,'초6':6,'중1':7,'중2':8,'중3':9};
+  return map[key]||99;
 }
 /* 화면 표시용 깔끔한 라벨 생성.
    "[PA1]SU3/MWF/PA1(1)_E6/G" → "월수금 3부 · PA1(1)_E6"
