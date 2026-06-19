@@ -49,8 +49,9 @@ function addNextSemester(){
   render();
 }
 
-/* 학기 데이터 비우기 — 분원 계정이 '자기 분원의 그 학기 데이터'만 삭제.
-   학기 자체와 다른 분원 데이터는 그대로 둠. */
+/* 학기 삭제 — 분원 계정 전용.
+   · 데이터 있으면: 자기 분원의 그 학기 데이터만 삭제 (학기는 유지)
+   · 빈 학기면: 잘못 만든 거라 보고 학기 자체를 목록에서 제거 (현재 진행 학기는 제외) */
 function confirmDeleteSemester(){
   const semId = state.semId;
   const sem = db.semesters.find(s=>s.id===semId);
@@ -59,20 +60,38 @@ function confirmDeleteSemester(){
   if(!branchId){ toast('분원 계정만 삭제할 수 있습니다','err'); return; }
   const b = getBranch(branchId);
 
-  // 이 분원·학기에 묶인 데이터 양
   const stuCnt = (db.semesterRecords||[]).filter(r=>r.semesterId===semId && r.branchId===branchId).length;
   const hisCnt = (db.counselingHistories||[]).filter(c=>c.semesterId===semId && c.branchId===branchId).length;
+
+  // 빈 학기(이 분원 데이터 없음) → 학기 목록에서 제거 시도
   if(stuCnt===0 && hisCnt===0){
-    toast('이 학기엔 삭제할 데이터가 없습니다','err'); return;
+    const cur = currentSemester();
+    if(semId===cur.id){ toast('현재 진행 중인 학기는 목록에서 제거할 수 없습니다','err'); return; }
+    // 다른 분원이 이 학기에 데이터를 갖고 있으면 목록에서 빼면 안 됨
+    const usedByOthers = (db.semesterRecords||[]).some(r=>r.semesterId===semId)
+      || (db.counselingHistories||[]).some(c=>c.semesterId===semId);
+    if(usedByOthers){ toast('다른 분원이 이 학기 데이터를 사용 중이라 제거할 수 없습니다','err'); return; }
+    openConfirm('학기 제거', `「${sem.name}」을(를) 목록에서 제거할까요?\n\n이 학기엔 데이터가 없습니다 (잘못 추가한 학기). 목록에서 사라집니다.`, ()=>{
+      db.semesters = db.semesters.filter(s=>s.id!==semId);
+      state.semId = db.semesters.some(s=>s.id===cur.id) ? cur.id : (db.semesters[0]?db.semesters[0].id:null);
+      showSaving('학기 제거 중…');
+      saveDB().then(ok=>{ hideSaving(); closeModal();
+        toast(ok?`${sem.name} 제거됨`:'저장 실패, 다시 시도하세요', ok?'ok':'err');
+        buildShell(); render();
+      });
+    }, {yesLabel:'목록에서 제거'});
+    return;
   }
+
+  // 데이터 있는 학기 → 자기 분원 데이터만 삭제
   const msg = `정말 「${b?b.name:''} · ${sem.name}」 데이터를 삭제할까요?\n\n이 분원의 이 학기 학생 ${stuCnt}명, 상담이력 ${hisCnt}건, 신규/퇴원·담임변경 기록이 모두 사라집니다. 다른 분원과 다른 학기는 영향받지 않습니다.\n\n복구할 수 없습니다.`;
   openConfirm('학기 데이터 삭제', msg, ()=>{
-    const keepBranchSem = (arr, key='branchId')=> (arr||[]).filter(x=> !(x.semesterId===semId && x[key]===branchId));
-    db.semesterRecords     = keepBranchSem(db.semesterRecords);
-    db.counselingHistories = keepBranchSem(db.counselingHistories);
-    db.studentMovements    = keepBranchSem(db.studentMovements);
-    db.uploadBatches       = keepBranchSem(db.uploadBatches);
-    db.teacherChanges      = keepBranchSem(db.teacherChanges);
+    const keep = (arr)=> (arr||[]).filter(x=> !(x.semesterId===semId && x.branchId===branchId));
+    db.semesterRecords     = keep(db.semesterRecords);
+    db.counselingHistories = keep(db.counselingHistories);
+    db.studentMovements    = keep(db.studentMovements);
+    db.uploadBatches       = keep(db.uploadBatches);
+    db.teacherChanges      = keep(db.teacherChanges);
     showSaving('학기 데이터 삭제 중…');
     saveDB().then(ok=>{
       hideSaving(); closeModal();
