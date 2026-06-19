@@ -1638,7 +1638,6 @@ function renderClosing(branchId){
     groups = [...m.entries()].map(([name,recs])=>({name,recs}))
       .sort((a,b)=> gradeOrder(a.name)-gradeOrder(b.name));
     firstCol = '학년';
-    note = '※ 학년 기준 집계입니다. 초5 중 일부는 레벨이 높아 CHESS가 아닌 ACE 수업을 듣고 있어, 강사별·레벨별 표의 숫자와 다를 수 있습니다.';
   }
 
   let html = headHtml + `
