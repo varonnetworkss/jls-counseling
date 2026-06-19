@@ -82,8 +82,8 @@ const TABLES = [
     fromRow:r=>({id:r.id,name:r.name}) },
   { key:'students',           table:'students',             toRow:s=>({id:s.id,code:s.code,name:s.name,school:s.school,grade:s.grade}),
     fromRow:r=>({id:r.id,code:r.code,name:r.name,school:r.school,grade:r.grade}) },
-  { key:'semesterRecords',    table:'semester_records',     toRow:r=>({id:r.id,student_id:r.studentId,branch_id:r.branchId,semester_id:r.semesterId,class_name:r.className,class_label:r.classLabel,teacher:r.teacher,note:r.note,target_type:r.targetType,status:r.status,origin:r.origin,enroll_date:r.enrollDate}),
-    fromRow:r=>({id:r.id,studentId:r.student_id,branchId:r.branch_id,semesterId:r.semester_id,className:r.class_name,classLabel:r.class_label,teacher:r.teacher,note:r.note,targetType:r.target_type,status:r.status,origin:r.origin,enrollDate:r.enroll_date}) },
+  { key:'semesterRecords',    table:'semester_records',     toRow:r=>({id:r.id,student_id:r.studentId,branch_id:r.branchId,semester_id:r.semesterId,class_name:r.className,class_label:r.classLabel,teacher:r.teacher,note:r.note,target_type:r.targetType,status:r.status,origin:r.origin,enroll_date:r.enrollDate,withdraw_date:r.withdrawDate}),
+    fromRow:r=>({id:r.id,studentId:r.student_id,branchId:r.branch_id,semesterId:r.semester_id,className:r.class_name,classLabel:r.class_label,teacher:r.teacher,note:r.note,targetType:r.target_type,status:r.status,origin:r.origin,enrollDate:r.enroll_date,withdrawDate:r.withdraw_date}) },
   { key:'counselingHistories',table:'counseling_histories', toRow:c=>({id:c.id,student_id:c.studentId,branch_id:c.branchId,semester_id:c.semesterId,date:c.date,type:c.type,content:c.content,counselor:c.counselor,batch_id:c.batchId,mistag:!!c.mistag}),
     fromRow:r=>({id:r.id,studentId:r.student_id,branchId:r.branch_id,semesterId:r.semester_id,date:r.date,type:r.type,content:r.content,counselor:r.counselor,batchId:r.batch_id,mistag:!!r.mistag}) },
   { key:'studentMovements',   table:'student_movements',    toRow:m=>({id:m.id,student_id:m.studentId,branch_id:m.branchId,semester_id:m.semesterId,type:m.type,date:m.date,memo:m.memo}),
@@ -369,7 +369,7 @@ function classesOf(branchId, semId, teacher){
 /* ============================================================================
    4. 앱 상태 & 라우터
    ============================================================================ */
-const state = { semId:null, route:null, branchSort:'active', teacherSort:'rate_desc', classSort:'rate_desc', allTeacherSort:'rate_desc' };
+const state = { semId:null, route:null, branchSort:'active', teacherSort:'rate_desc', classSort:'rate_desc', allTeacherSort:'rate_desc', rosterTab:'new' };
 
 const el = id => document.getElementById(id);
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -474,16 +474,19 @@ function buildShell(){
     data:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"/><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"/></svg>',
     acct:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
     stu:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>',
+    roster:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/></svg>',
   };
   if(isAdmin){
     nav.innerHTML = `
       <div class="sb-sect">관리</div>
       <div class="sb-item" data-nav="admin">${I.dash}<span>통합 대시보드</span></div>
+      <div class="sb-item" data-nav="roster">${I.roster}<span>신규·퇴원 명단</span></div>
       <div class="sb-item" data-nav="accounts">${I.acct}<span>분원 계정 관리</span></div>`;
   } else {
     nav.innerHTML = `
       <div class="sb-sect">분원</div>
       <div class="sb-item" data-nav="branch">${I.dash}<span>Dashboard</span></div>
+      <div class="sb-item" data-nav="roster">${I.roster}<span>신규·퇴원 명단</span></div>
       <div class="sb-item" data-nav="students">${I.stu}<span>학생관리</span></div>
       <div class="sb-item" data-nav="data">${I.data}<span>데이터관리</span></div>`;
   }
@@ -536,6 +539,7 @@ function render(){
     else { setActiveNav('branch'); renderBranchDashboard(); }
   } else if(root==='data'){ setActiveNav('data'); renderDataManagement(); }
   else if(root==='students'){ setActiveNav('students'); renderStudentManagement(); }
+  else if(root==='roster'){ setActiveNav('roster'); renderRoster(); }
   else { go(session.role==='admin'?'admin':'branch'); return; }
   el('content').scrollIntoView({block:'start'});
   window.scrollTo(0,0);
@@ -677,7 +681,7 @@ function renderAdminDashboard(){
       <div class="mini-stats">
         <div class="mini-stat"><div class="v num">${hc.start}</div><div class="l">학기초</div></div>
         <div class="mini-stat"><div class="v num" style="color:var(--brand)">${hc.newCnt}</div><div class="l">신규</div></div>
-        <div class="mini-stat"><div class="v num" style="color:${hc.net>0?'var(--pos)':hc.net<0?'var(--neg)':'var(--ink-2)'}">${hc.net>0?'+':''}${hc.net}</div><div class="l">순증감</div></div>
+        <div class="mini-stat"><div class="v num" style="color:${hc.withdraw>0?'var(--neg)':'var(--ink-2)'}">${hc.withdraw}</div><div class="l">퇴원</div></div>
       </div>
       ${hasData ? stageBars(rates) : `<div style="color:var(--ink-3);font-size:12.5px;padding:8px 0">아직 업로드된 데이터가 없습니다</div>`}
       <div class="card-foot">
@@ -1106,6 +1110,95 @@ function openCounseling(studentId, stage, name){
   `);
 }
 /* ============================================================================
+   14-2. 신규·퇴원 명단 (관리자=전 분원, 분원=자기 분원)
+   ============================================================================ */
+function renderRoster(){
+  const isAdmin = session.role==='admin';
+  const semId = state.semId;
+  const tab = state.rosterTab || 'new';
+  crumbs([{label:'신규·퇴원 명단'}]);
+
+  // 대상 분원 범위
+  const branchIds = isAdmin ? db.branches.map(b=>b.id) : [session.branchId];
+
+  // 신규/퇴원 학생 레코드 모으기
+  // 신규 = 이 학기 semesterRecords 중 origin==='new'
+  // 퇴원 = 이 학기 semesterRecords 중 status==='withdraw'
+  const rows = [];
+  branchIds.forEach(bid=>{
+    const b = getBranch(bid);
+    recordsOf(bid, semId).forEach(r=>{
+      const s = getStudent(r.studentId);
+      if(!s) return;
+      const isNew = (r.origin==='new');
+      const isWd = (r.status==='withdraw');
+      if(tab==='new' && !isNew) return;
+      if(tab==='withdraw' && !isWd) return;
+      // 날짜: 이동이력에서 해당 타입의 날짜 찾기
+      const mvType = tab==='new' ? 'new' : 'withdraw';
+      const mv = db.studentMovements.find(m=>m.studentId===r.studentId && m.branchId===bid && m.semesterId===semId && m.type===mvType);
+      rows.push({
+        branchName: b?b.name:'-',
+        name: s.name, code: s.code, school: s.school||'', grade: s.grade||'',
+        classLabel: r.classLabel||r.className||'-', teacher: r.teacher||'-',
+        date: (mv&&mv.date)||r.enrollDate||'-',
+        memo: (mv&&mv.memo)||'',
+      });
+    });
+  });
+  rows.sort((a,b)=> (b.date||'').localeCompare(a.date||''));
+
+  // 카운트 (탭 뱃지용)
+  let newCnt=0, wdCnt=0;
+  branchIds.forEach(bid=>{
+    recordsOf(bid, semId).forEach(r=>{
+      if(r.origin==='new') newCnt++;
+      if(r.status==='withdraw') wdCnt++;
+    });
+  });
+
+  const scopeLabel = isAdmin ? '전 분원' : (getBranch(session.branchId)?.name||'');
+
+  let html = `
+    <div class="page-head">
+      <h2>신규·퇴원 명단</h2>
+      <div class="sub">${esc(scopeLabel)} · ${esc(db.semesters.find(s=>s.id===semId).name)}</div>
+    </div>
+    <div class="sort-bar" style="margin-bottom:16px">
+      <button class="sb-btn ${tab==='new'?'on':''}" onclick="setRosterTab('new')">신규생 ${newCnt}</button>
+      <button class="sb-btn ${tab==='withdraw'?'on':''}" onclick="setRosterTab('withdraw')">퇴원생 ${wdCnt}</button>
+    </div>`;
+
+  if(rows.length===0){
+    html += emptyState(tab==='new'?'신규생이 없습니다':'퇴원생이 없습니다', '');
+  } else {
+    html += `<div class="table-wrap"><div class="table-scroll">
+      <table class="rank-table">
+        <thead><tr>
+          <th>학생명</th><th>회원코드</th>${isAdmin?'<th>분원</th>':''}<th>반</th><th>담임</th>
+          <th>학교/학년</th><th>${tab==='new'?'입학일':'퇴원일'}</th>${tab==='withdraw'?'<th>사유</th>':''}
+        </tr></thead>
+        <tbody>
+        ${rows.map(r=>`<tr>
+          <td class="nm">${esc(r.name)}</td>
+          <td><span class="code-chip">${esc(r.code)}</span></td>
+          ${isAdmin?`<td><span class="branch-chip">${esc(r.branchName)}</span></td>`:''}
+          <td>${esc(r.classLabel)}</td>
+          <td>${esc(r.teacher)}</td>
+          <td style="color:var(--ink-3);font-size:12px">${esc(r.school)} ${esc(r.grade)}${r.grade?'학년':''}</td>
+          <td class="num">${esc(r.date)}</td>
+          ${tab==='withdraw'?`<td style="color:var(--ink-3);font-size:12px">${esc(r.memo)}</td>`:''}
+        </tr>`).join('')}
+        </tbody>
+      </table>
+    </div></div>
+    <div style="margin-top:10px;font-size:12px;color:var(--ink-3)">총 ${rows.length}명 · 최근 순</div>`;
+  }
+  el('content').innerHTML = html;
+}
+function setRosterTab(tab){ state.rosterTab=tab; render(); }
+
+/* ============================================================================
    15. 분원 — 데이터관리 (엑셀 업로드 전용)
    ============================================================================ */
 function renderDataManagement(){
@@ -1324,8 +1417,9 @@ function renderStudentManagement(){
         <div id="wdResults" class="wd-results"></div>
         <input type="hidden" id="wdSelect" value="">
         <div id="wdPicked" class="wd-picked" style="display:none"></div>
-        <div class="field full" style="margin:10px 0">
-          <label>사유 (선택)</label><input id="wdMemo" placeholder="예: 타지역 이사">
+        <div class="form-row" style="margin:10px 0">
+          <div class="field"><label>퇴원일</label><input id="wdDate" type="date" value="${today()}"></div>
+          <div class="field"><label>사유 (선택)</label><input id="wdMemo" placeholder="예: 타지역 이사"></div>
         </div>
         <button class="btn" style="width:100%;border-color:var(--neg-soft);color:var(--neg)" onclick="withdrawStudent()">퇴원 처리</button>
       </div>
@@ -1843,10 +1937,12 @@ function withdrawStudent(){
   if(!recId){ toast('학생을 검색해서 선택하세요','err'); return; }
   const rec=db.semesterRecords.find(r=>r.id===recId);
   if(!rec){ toast('학생을 다시 선택하세요','err'); return; }
+  const wdDate = el('wdDate').value || today();
   rec.status='withdraw';
+  rec.withdrawDate=wdDate;   // 레코드에도 퇴원일 저장 (월별 추적용)
   const stu=getStudent(rec.studentId);
   db.studentMovements.push({id:uid('mv'),studentId:rec.studentId,branchId:rec.branchId,semesterId:rec.semesterId,
-    type:'withdraw',date:today(),memo:el('wdMemo').value.trim()||'퇴원 처리'});
+    type:'withdraw',date:wdDate,memo:el('wdMemo').value.trim()||'퇴원 처리'});
   saveDB(); toast(`${stu.name} 퇴원 처리 완료`,'ok'); render();
 }
 
