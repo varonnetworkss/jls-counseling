@@ -3122,30 +3122,27 @@ function exRestore(){
   });
   exState.activeQ=1; exUpdateScore();
 }
- 
 /* 저장 — examScores에 시험별 1행 upsert (회원코드+학기+시험종류+레벨로 구분) */
 async function exSave(silent){
-  const d=exState.data[exState.page]; if(!d) return;
+  const d=exState.data[exState.page];
+  if(!d) return;
   if(!d.studentCode){ if(!silent) toast('학생을 먼저 배정하세요','err'); return; }
   const stu=db.students.find(s=>s.code===d.studentCode);
   if(!stu){ if(!silent) toast('명단에 없는 학생입니다','err'); return; }
   const branchId=session.branchId, semId=state.semId;
   const examType=el('exType').value, level=el('exLevel').value, title=el('exTitle').value.trim();
   const mc=exGetMC(), wr=exGetWR();
- 
-  // 같은 학생·학기·시험종류·레벨이면 갱신(재시험은 attempt_no 올림 — 여기선 단순 덮어쓰기)
-  let row=(db.examScores||[]).find(s=>s.studentId===stu.id && s.semesterId===semId
-    && s.examType===examType && s.level===level && s.branchId===branchId);
+  let row=(db.examScores||[]).find(s=>s.studentId===stu.id && s.semesterId===semId && s.examType===examType && s.level===level && s.branchId===branchId);
   if(row){
     row.mcScore=mc; row.wrScore=wr; row.total=mc+wr; row.title=title; row.gradedAt=nowStamp();
   } else {
-    row={ id:uid('exs'), studentId:stu.id, branchId, semesterId:semId, examType, level, title,
-      mcScore:mc, wrScore:wr, total:mc+wr, attemptNo:1, gradedAt:nowStamp() };
+    row={ id:uid('exs'), studentId:stu.id, branchId, semesterId:semId, examType, level, title, mcScore:mc, wrScore:wr, total:mc+wr, attemptNo:1, gradedAt:nowStamp() };
     (db.examScores||(db.examScores=[])).push(row);
   }
   d.saved=true;
   const ok=await saveDB();
   if(!silent) toast(ok?`✅ ${stu.name} 저장 · 합계 ${mc+wr}점`:'저장 실패, 다시 시도','ok');
 }
+
 pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
 init();
