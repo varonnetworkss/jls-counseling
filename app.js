@@ -2893,59 +2893,100 @@ function renderExamHome(){
 }
  
 /* 채점 화면 — 시험 설정 + PDF + 빠른 채점. (분원 학생 명단을 자동으로 사용) */
+/* ============================================================================
+   ★ 시험관리 — 화면 함수 교체분 (renderExamGrade 및 관련 함수)
+   ----------------------------------------------------------------------------
+   기존 app.js의 renderExamGrade ~ exSave 까지를 이걸로 교체하세요.
+   renderExamHome 은 그대로 두면 됩니다.
+
+   새 기능:
+   - 시험종류 3버튼 (DT / AT 학기말 / 영역별 능력평가)
+   - 레벨·문항수 → 배점칸 자동생성
+   - 일괄채우기 + 개별수정 + 문항별 "서술형 전환"(0/1/2/직접입력)
+   - 정답표 엑셀 업로드 (문항/정답 두 열, "서술형"이면 화면 자동 세팅)
+   - 반별 스캔 PDF 업로드 → 반별로 점수 묶여서 확인
+   - 서술형은 선생님이 OMR 보고 0/1/2/직접 점수 입력
+   ============================================================================ */
+
+const EXAM_TYPES = [
+  { key:'DT',   label:'DT',          sub:'진단 평가' },
+  { key:'AT',   label:'AT',          sub:'학기말 평가' },
+  { key:'area', label:'영역별 능력평가', sub:'영능' },
+];
+const CHESS_LEVELS = ['IS1','IS2','DSA1','DSA2','DSB1','DSB2','DSC1','DSC2','DSD1','DSD2',
+  'LSA1','LSA2','LSB1','LSB2','LSC1','LSC2','MSA1','MSA2','MSB1','MSB2'];
+
+/* 채점 세션 상태 */
+let exState = null;
+const EX_CIRCLED=['①','②','③','④','⑤','⑥'];
+
+/* ───────── 채점 화면 ───────── */
 function renderExamGrade(){
   const branchId = session.branchId;
   const b = getBranch(branchId);
   const semId = state.semId;
   crumbs([{label:'시험관리', go:'exam'},{label:'채점'}]);
- 
+
+  exState = { type:'DT', grid:[], key:[], pdf:null, page:1, pages:0, data:{}, activeQ:1 };
+
   el('content').innerHTML = `
     ${backLink('시험관리','exam')}
     <div class="page-head">
       <h2>시험 채점</h2>
-      <div class="sub">정답을 등록하고 스캔 PDF를 올리면, 학생별로 채점해 저장합니다</div>
+      <div class="sub">시험을 설정하고 정답표를 올린 뒤, 반별로 스캔을 채점합니다</div>
     </div>
- 
+
     <div class="panel" style="margin-bottom:16px">
-      <div class="panel-head"><div class="pi" style="background:var(--brand-soft);color:var(--brand)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3 8-8"/><rect x="3" y="4" width="18" height="16" rx="2"/></svg></div>
-        <div><h3>1. 시험 설정 & 정답</h3></div></div>
-      <div class="form-row">
-        <div class="field"><label>시험 종류</label>
-          <select id="exType">${EXAM_TYPES.map(t=>`<option value="${t.key}">${t.label}</option>`).join('')}</select></div>
+      <h3 style="font-size:14.5px;font-weight:700;margin-bottom:14px">1. 시험 종류</h3>
+      <div class="ex-type-btns" id="exTypeBtns">
+        ${EXAM_TYPES.map((t,i)=>`<button class="ex-type-btn ${i===0?'on':''}" data-type="${t.key}" onclick="exPickType('${t.key}')">${esc(t.label)}<span>${esc(t.sub)}</span></button>`).join('')}
+      </div>
+      <div class="form-row" style="margin-top:14px">
         <div class="field"><label>레벨</label>
           <select id="exLevel">${CHESS_LEVELS.map(l=>`<option>${l}</option>`).join('')}</select></div>
         <div class="field"><label>시험 제목</label><input id="exTitle" placeholder="예: 2025-1 DSB1 DT"></div>
       </div>
-      <div class="form-row">
-        <div class="field"><label>객관식 문항 수</label><input id="exNumMC" type="number" value="20" oninput="exBuildMC()"></div>
-        <div class="field"><label>보기 수</label><select id="exNumCh" onchange="exBuildMC()"><option>3</option><option>4</option><option selected>5</option></select></div>
-        <div class="field"><label>문항당 배점</label><input id="exPts" type="number" step="0.5" value="2.5" oninput="exUpdateScore()"></div>
+    </div>
+
+    <div class="panel" style="margin-bottom:16px">
+      <h3 style="font-size:14.5px;font-weight:700;margin-bottom:14px">2. 문항 수 & 배점</h3>
+      <div class="form-row" style="align-items:flex-end">
+        <div class="field" style="max-width:160px"><label>문항 수</label><input id="exNumQ" type="number" value="20"></div>
+        <button class="btn primary" onclick="exBuildGrid()" style="margin-bottom:0">배점칸 생성</button>
       </div>
-      <div class="field full">
-        <label>정답 — 한 줄에 쭉 (예: 13242… 또는 1,3,2,4)</label>
-        <input id="exKey" placeholder="문항 순서대로" oninput="exParseKey()">
-        <div class="pd" id="exKeyStatus" style="margin-top:6px"></div>
-      </div>
-      <div class="field full">
-        <label>주관식 구성 (선택) — "문항:칸수" 콤마 (예: 1:1, 3:2, 7:3)</label>
-        <input id="exSubj" placeholder="비우면 주관식 없음" oninput="exBuildSubj()">
+      <div id="exGridArea" style="display:none;margin-top:6px">
+        <div class="ex-bulk">
+          <span>전체 일괄 채우기</span>
+          <input id="exBulk" type="number" step="0.5" value="2.5">
+          <button class="btn sm" onclick="exBulkFill()">전체 적용</button>
+          <span style="color:var(--ink-3);font-size:12px">— 그 뒤 다른 문항만 개별 수정 / 서술형 전환</span>
+        </div>
+        <div class="ex-score-grid" id="exScoreGrid"></div>
+        <div class="ex-summary">
+          <div class="s"><b id="exSumObj">0</b><span>객관식</span></div>
+          <div class="s"><b id="exSumSubj">0</b><span>서술형</span></div>
+          <div class="s"><b id="exSumTotal">0</b><span>총 배점</span></div>
+        </div>
       </div>
     </div>
- 
-    <div class="panel" style="margin-bottom:16px">
-      <div class="panel-head"><div class="pi" style="background:var(--pos-soft);color:var(--pos)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></div>
-        <div><h3>2. 스캔 PDF</h3></div></div>
-      <div class="pd">학생별 OMR이 한 파일로 묶인 스캔 PDF를 올리세요. QR로 학생을 자동 식별합니다. (명단은 이 분원·학기 학생을 자동 사용)</div>
+
+    <div class="panel" id="exAnswerPanel" style="display:none;margin-bottom:16px">
+      <h3 style="font-size:14.5px;font-weight:700;margin-bottom:14px">3. 정답표 업로드</h3>
+      <div class="pd">문항 / 정답 두 열 엑셀. 객관식은 번호(1~5), 서술형 문항은 "서술형"이라고 적으면 위 배점칸이 자동으로 서술형으로 바뀝니다.</div>
+      <input type="file" id="exKeyFile" accept=".xlsx,.xls,.csv" onchange="exLoadKey()">
+      <div class="pd" id="exKeyStatus" style="margin-top:8px"></div>
+    </div>
+
+    <div class="panel" id="exScanPanel" style="display:none;margin-bottom:16px">
+      <h3 style="font-size:14.5px;font-weight:700;margin-bottom:14px">4. 반별 스캔 업로드 & 채점</h3>
+      <div class="pd">반 하나씩 스캔 PDF를 올리세요. QR로 학생을 자동 식별하고, 채점 결과는 반별로 묶여 저장됩니다.</div>
       <input type="file" id="exPdf" accept="application/pdf" onchange="exLoadPDF()">
       <div class="pd" id="exPdfStatus" style="margin-top:8px"></div>
     </div>
- 
+
     <div id="exWork" style="display:none">
       <div class="dm-grid">
         <div class="panel">
-          <div class="panel-head"><div><h3 style="font-size:14px">스캔 페이지</h3></div></div>
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
             <button class="btn sm" onclick="exPrev()">◀</button>
             <span style="flex:1;text-align:center;font-weight:700" id="exPageInfo"></span>
@@ -2959,21 +3000,20 @@ function renderExamGrade(){
             <canvas id="exCanvas" style="max-width:100%"></canvas>
           </div>
         </div>
- 
         <div>
           <div class="panel">
-            <div class="panel-head"><div><h3 style="font-size:14px">객관식</h3></div></div>
-            <div class="pd">①~⑤ 클릭 또는 숫자키로 답 입력 · 초록=정답, 빨강=오답</div>
+            <h3 style="font-size:14px;font-weight:700;margin-bottom:8px">객관식</h3>
+            <div class="pd">①~⑤ 클릭 또는 숫자키 · 초록=정답, 빨강=오답</div>
             <div id="exMC" style="display:flex;gap:14px"></div>
           </div>
           <div class="panel" id="exSubjCard" style="display:none;margin-top:14px">
-            <div class="panel-head"><div><h3 style="font-size:14px">주관식</h3></div></div>
+            <h3 style="font-size:14px;font-weight:700;margin-bottom:8px">서술형 (선생님 채점)</h3>
             <div id="exSubjInput"></div>
           </div>
-          <div class="rate-panel" style="grid-template-columns:1fr 1fr 1fr;margin-top:14px">
-            <div class="rate-cell"><div class="rcl">객관식</div><div class="rcv num" id="exMcScore">0</div></div>
-            <div class="rate-cell"><div class="rcl">주관식</div><div class="rcv num" id="exWrScore">0</div></div>
-            <div class="rate-cell total"><div class="rcl">합계</div><div class="rcv num" id="exTotal">0</div></div>
+          <div class="ex-summary" style="margin-top:14px">
+            <div class="s"><b id="exMcScore">0</b><span>객관식</span></div>
+            <div class="s"><b id="exWrScore">0</b><span>서술형</span></div>
+            <div class="s"><b id="exTotal">0</b><span>합계</span></div>
           </div>
           <div style="margin-top:14px;display:flex;gap:8px">
             <button class="btn primary" style="flex:1" onclick="exSave()">이 학생 저장</button>
@@ -2983,8 +3023,229 @@ function renderExamGrade(){
       </div>
     </div>
   `;
-  exState = { pdf:null, page:1, pages:0, key:[], subj:[], data:{}, activeQ:1 };
-  exBuildMC();
+}
+
+function exPickType(t){
+  exState.type=t;
+  document.querySelectorAll('.ex-type-btn').forEach(b=>b.classList.toggle('on', b.dataset.type===t));
+}
+
+/* ── 배점 그리드 ── */
+function exBuildGrid(){
+  const n=+el('exNumQ').value||0;
+  if(n<1){ toast('문항 수를 입력하세요','err'); return; }
+  exState.grid = Array.from({length:n},(_,i)=>({no:i+1, mode:'obj', pts:+el('exBulk').value||2.5}));
+  el('exGridArea').style.display='block';
+  el('exAnswerPanel').style.display='block';
+  el('exScanPanel').style.display='block';
+  exRenderGrid();
+}
+function exRenderGrid(){
+  el('exScoreGrid').innerHTML = exState.grid.map((g,i)=>{
+    if(g.mode==='obj'){
+      return `<div class="ex-sq"><span class="ex-sq-no">${g.no}번</span>
+        <input type="number" step="0.5" value="${g.pts}" onchange="exSetPts(${i},this.value)">
+        <button class="ex-sq-toggle" onclick="exToggleMode(${i})">서술형</button></div>`;
+    }
+    return `<div class="ex-sq subj"><span class="ex-sq-no">${g.no}번</span>
+      <select onchange="exSetPts(${i},this.value)">
+        <option value="1" ${g.pts==1?'selected':''}>0·1</option>
+        <option value="2" ${g.pts==2?'selected':''}>0·1·2</option>
+        <option value="custom">직접…</option></select>
+      <button class="ex-sq-toggle" onclick="exToggleMode(${i})">객관식</button></div>`;
+  }).join('');
+  exUpdateGridSummary();
+}
+function exSetPts(i,val){
+  if(val==='custom'){ const v=prompt('이 문항 최대 배점',''+exState.grid[i].pts); if(v!=null&&!isNaN(+v))exState.grid[i].pts=+v; exRenderGrid(); return; }
+  exState.grid[i].pts=+val||0; exUpdateGridSummary();
+}
+function exToggleMode(i){
+  exState.grid[i].mode = exState.grid[i].mode==='obj'?'subj':'obj';
+  if(exState.grid[i].mode==='subj' && exState.grid[i].pts>2) exState.grid[i].pts=2;
+  exRenderGrid();
+}
+function exBulkFill(){ const v=+el('exBulk').value||0; exState.grid.forEach(g=>{if(g.mode==='obj')g.pts=v;}); exRenderGrid(); }
+function exUpdateGridSummary(){
+  el('exSumObj').textContent = exState.grid.filter(g=>g.mode==='obj').length;
+  el('exSumSubj').textContent = exState.grid.filter(g=>g.mode==='subj').length;
+  el('exSumTotal').textContent = Math.round(exState.grid.reduce((a,g)=>a+(+g.pts||0),0)*10)/10;
+}
+
+/* ── 정답표 엑셀 (문항/정답 두 열) ── */
+function exLoadKey(){
+  const f=el('exKeyFile').files[0]; if(!f) return;
+  readTable(f, rows=>{
+    if(rows.length<2){ toast('정답 데이터가 없습니다','err'); return; }
+    const header=rows[0].map(h=>String(h).trim());
+    const idx=mapHeader(header,{ qno:['문항','번호','no','문항번호'], ans:['정답','답','answer'] });
+    if(idx.ans<0){ toast('정답 열을 찾지 못했습니다','err'); return; }
+    const key=[];
+    rows.slice(1).forEach(r=>{
+      const no = idx.qno>=0 ? parseInt(String(r[idx.qno]).replace(/\D/g,''),10) : (key.length+1);
+      const a = String(r[idx.ans]||'').trim();
+      if(!no) return;
+      key[no-1] = a;
+    });
+    exState.key = key;
+    // 엑셀에 "서술형"이라 적힌 문항 → 그리드 자동 세팅
+    let subjCnt=0;
+    key.forEach((a,i)=>{
+      if(exState.grid[i] && /서술|주관/.test(a)){ exState.grid[i].mode='subj'; if(exState.grid[i].pts>2)exState.grid[i].pts=2; subjCnt++; }
+    });
+    exRenderGrid();
+    el('exKeyStatus').innerHTML=`<span class="status-badge active">정답 ${key.filter(Boolean).length}개 등록${subjCnt?` · 서술형 ${subjCnt}문항 자동설정`:''}</span>`;
+  });
+}
+
+/* ── 객관식 채점 입력 ── */
+function exBuildMC(){
+  const objQs = exState.grid.filter(g=>g.mode==='obj').map(g=>g.no);
+  const half=Math.ceil(objQs.length/2);
+  const ch=5;
+  const mk=no=>{
+    let opts='';
+    for(let c=1;c<=ch;c++) opts+=`<button class="ex-opt" onclick="exPick(${no},${c})" id="exo${no}_${c}">${EX_CIRCLED[c-1]}</button>`;
+    return `<div class="ex-q" id="exq${no}"><span class="ex-qn">${no}</span><div class="ex-opts">${opts}</div><span class="ex-mk" id="exmk${no}"></span></div>`;
+  };
+  let L='',R='';
+  objQs.forEach((no,k)=>{ if(k<half) L+=mk(no); else R+=mk(no); });
+  el('exMC').innerHTML=`<div style="flex:1">${L}</div><div style="flex:1">${R}</div>`;
+}
+function exPick(no,c){
+  const d=exState.data[exState.page]; if(!d) return;
+  d.mc[no]=c; exState.activeQ=no; exPaint(no); exUpdateScore();
+}
+function exPaint(no){
+  const row=el('exq'+no); if(!row) return;
+  const sel=exState.data[exState.page]?.mc?.[no];
+  row.querySelectorAll('.ex-opt').forEach((b,i)=>b.classList.toggle('sel',sel===i+1));
+  row.classList.remove('correct','wrong');
+  const mk=el('exmk'+no); if(mk) mk.textContent='';
+  const ans=exState.key[no-1];
+  if(sel && ans!=null && ans!==''){
+    if(String(sel)===String(ans)){ row.classList.add('correct'); if(mk)mk.textContent='✓'; }
+    else { row.classList.add('wrong'); if(mk)mk.textContent='✕'; }
+  }
+}
+function exGetMC(){
+  let total=0;
+  exState.grid.filter(g=>g.mode==='obj').forEach(g=>{
+    const sel=exState.data[exState.page]?.mc?.[g.no];
+    const ans=exState.key[g.no-1];
+    if(sel && ans!=null && String(sel)===String(ans)) total+=(+g.pts||0);
+  });
+  return total;
+}
+
+/* ── 서술형 채점 (선생님: 0/1/2/직접) ── */
+function exBuildSubj(){
+  const subjQs = exState.grid.filter(g=>g.mode==='subj');
+  const box=el('exSubjInput');
+  if(subjQs.length===0){ el('exSubjCard').style.display='none'; box.innerHTML=''; return; }
+  el('exSubjCard').style.display='block';
+  box.innerHTML = subjQs.map(g=>{
+    const max=g.pts||2;
+    let opts='';
+    for(let p=0;p<=max;p++) opts+=`<button onclick="exSetSubj(${g.no},${p},this)">${p}</button>`;
+    return `<div class="ex-subj-row"><span class="ex-subj-lab">${g.no}번</span>
+      <div class="ex-seg" data-no="${g.no}">${opts}</div>
+      <span style="font-size:11px;color:var(--ink-3)">/ ${max}</span></div>`;
+  }).join('');
+}
+function exSetSubj(no,pt,btn){
+  [...btn.parentElement.children].forEach(b=>b.classList.remove('on')); btn.classList.add('on');
+  exState.data[exState.page].subj[no]=pt; exUpdateScore();
+}
+function exGetWR(){ return exState.data[exState.page]?Object.values(exState.data[exState.page].subj||{}).reduce((a,b)=>a+(+b||0),0):0; }
+
+function exUpdateScore(){
+  const mc=exGetMC(), wr=exGetWR();
+  el('exMcScore').textContent=mc; el('exWrScore').textContent=wr; el('exTotal').textContent=mc+wr;
+}
+
+document.addEventListener('keydown', e=>{
+  if(!exState || !el('exWork') || el('exWork').style.display==='none') return;
+  if(['INPUT','SELECT','TEXTAREA'].includes(document.activeElement.tagName)) return;
+  const objQs = exState.grid.filter(g=>g.mode==='obj').map(g=>g.no);
+  if(e.key>='1'&&e.key<='6'){ exPick(exState.activeQ,+e.key);
+    const i=objQs.indexOf(exState.activeQ); if(i>=0&&i<objQs.length-1) exState.activeQ=objQs[i+1]; }
+});
+
+/* ── PDF (반별 스캔) ── */
+async function exLoadPDF(){
+  const f=el('exPdf').files[0]; if(!f) return;
+  if(exState.grid.length===0){ toast('먼저 문항·배점을 설정하세요','err'); return; }
+  el('exPdfStatus').textContent='불러오는 중…';
+  const buf=await f.arrayBuffer();
+  exState.pdf=await pdfjsLib.getDocument({data:buf}).promise;
+  exState.pages=exState.pdf.numPages;
+  exState.data={};
+  el('exPdfStatus').innerHTML=`<span class="status-badge active">${exState.pages}페이지 로드</span>`;
+  el('exWork').style.display='block';
+  exFillAssign(); exBuildMC(); exBuildSubj();
+  exState.page=1; await exRender();
+}
+function exFillAssign(){
+  const recs=activeRecordsOf(session.branchId, state.semId);
+  el('exAssign').innerHTML='<option value="">— 학생 선택 —</option>'+
+    recs.map(r=>{const s=getStudent(r.studentId);return `<option value="${s.code}">${esc(s.name)} (${esc(s.code)})</option>`;}).join('');
+}
+async function exRender(){
+  const page=await exState.pdf.getPage(exState.page);
+  const vp=page.getViewport({scale:1.5});
+  const cv=el('exCanvas'); cv.width=vp.width; cv.height=vp.height;
+  await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
+  el('exPageInfo').textContent=`${exState.page} / ${exState.pages}`;
+  if(!exState.data[exState.page]) exState.data[exState.page]={studentCode:'',mc:{},subj:{},saved:false};
+  exTryQR(cv);
+  el('exAssign').value=exState.data[exState.page].studentCode||'';
+  exBuildMC(); exBuildSubj(); exRestore();
+}
+function exTryQR(cv){
+  try{
+    const ctx=cv.getContext('2d'); const img=ctx.getImageData(0,0,cv.width,cv.height);
+    const code=jsQR(img.data,img.width,img.height); const st=el('exQrStatus');
+    if(code&&code.data&&code.data.startsWith('JLS:')){
+      const c=code.data.slice(4); exState.data[exState.page].studentCode=c;
+      el('exAssign').value=c; const stu=db.students.find(s=>s.code===c);
+      st.innerHTML=`<span class="status-badge active">QR 자동: ${esc(stu?stu.name:c)}</span>`;
+    } else st.innerHTML=`<span class="status-badge withdraw">QR 못 읽음 — 직접 선택</span>`;
+  }catch(e){ el('exQrStatus').textContent=''; }
+}
+function exAssignStudent(){ exState.data[exState.page].studentCode=el('exAssign').value; }
+function exPrev(){ if(exState.page>1){ exState.page--; exRender(); } }
+function exNext(){ exSave(true); if(exState.page<exState.pages){ exState.page++; exRender(); } }
+function exRestore(){
+  exState.grid.filter(g=>g.mode==='obj').forEach(g=>exPaint(g.no));
+  document.querySelectorAll('.ex-seg').forEach(seg=>{
+    const v=exState.data[exState.page]?.subj?.[seg.dataset.no];
+    [...seg.children].forEach(b=>b.classList.toggle('on', v!==undefined && +b.textContent===v));
+  });
+  const objQs=exState.grid.filter(g=>g.mode==='obj').map(g=>g.no);
+  exState.activeQ=objQs[0]||1; exUpdateScore();
+}
+
+/* ── 저장 (시험별 1행, 반별 스캔이라 자연히 반별로 묶임) ── */
+async function exSave(silent){
+  const d=exState.data[exState.page]; if(!d) return;
+  if(!d.studentCode){ if(!silent) toast('학생을 먼저 배정하세요','err'); return; }
+  const stu=db.students.find(s=>s.code===d.studentCode);
+  if(!stu){ if(!silent) toast('명단에 없는 학생입니다','err'); return; }
+  const branchId=session.branchId, semId=state.semId;
+  const examType=exState.type, level=el('exLevel').value, title=el('exTitle').value.trim();
+  const mc=exGetMC(), wr=exGetWR();
+  let row=(db.examScores||[]).find(s=>s.studentId===stu.id && s.semesterId===semId
+    && s.examType===examType && s.level===level && s.branchId===branchId);
+  if(row){ row.mcScore=mc; row.wrScore=wr; row.total=mc+wr; row.title=title; row.gradedAt=nowStamp(); }
+  else {
+    row={ id:uid('exs'), studentId:stu.id, branchId, semesterId:semId, examType, level, title,
+      mcScore:mc, wrScore:wr, total:mc+wr, attemptNo:1, gradedAt:nowStamp() };
+    (db.examScores||(db.examScores=[])).push(row);
+  }
+  d.saved=true;
+  const ok=await saveDB();
+  if(!silent) toast(ok?`✅ ${stu.name} 저장 · 합계 ${mc+wr}점`:'저장 실패, 다시 시도','ok');
 }
  
 /* ───── 채점 상태 & 로직 ───── */
