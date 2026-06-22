@@ -504,3 +504,31 @@ table.rank-table tbody tr:last-child td{border-bottom:none}
 .roster-filter input{flex:1;min-width:160px}
 .roster-filter .rf-clear{height:36px;border:none;background:var(--brand-soft);color:var(--brand);
   font-size:12px;font-weight:700;padding:0 12px;border-radius:var(--radius-sm);cursor:pointer}
+  /* 객관식 한 문항 */
+.ex-q{display:flex;align-items:center;gap:8px;padding:4px 7px;border-radius:8px;margin-bottom:2px}
+.ex-q.correct{background:var(--pos-soft)}
+.ex-q.wrong{background:var(--neg-soft)}
+.ex-qn{font-size:13px;font-weight:700;width:22px;text-align:right;flex:none;
+  font-variant-numeric:tabular-nums;color:var(--ink)}
+.ex-opts{display:flex;gap:4px}
+.ex-opt{width:26px;height:26px;border:1.3px solid var(--line);background:var(--surface);
+  border-radius:7px;font-size:12px;font-weight:700;color:var(--ink-3);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;padding:0;transition:.1s}
+.ex-opt:hover{border-color:var(--brand)}
+.ex-opt.sel{background:var(--ink);color:#fff;border-color:var(--ink)}
+.ex-q.correct .ex-opt.sel{background:var(--pos);border-color:var(--pos)}
+.ex-q.wrong .ex-opt.sel{background:var(--neg);border-color:var(--neg)}
+.ex-mk{margin-left:auto;font-size:13px;font-weight:700;flex:none;width:16px;text-align:center}
+.ex-q.correct .ex-mk{color:var(--pos)}
+.ex-q.wrong .ex-mk{color:var(--neg)}
+ 
+/* 주관식 점수 버튼 */
+.ex-subj-row{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--line-2)}
+.ex-subj-row:last-child{border-bottom:none}
+.ex-subj-lab{font-weight:700;min-width:42px;font-size:13px}
+.ex-seg{display:flex;gap:4px}
+.ex-seg button{min-width:30px;height:30px;border:1.3px solid var(--line);background:var(--surface);
+  font-weight:700;font-size:13px;border-radius:7px;color:var(--ink-3);cursor:pointer;transition:.1s}
+.ex-seg button:hover{border-color:var(--brand)}
+.ex-seg button.on{background:var(--brand);color:#fff;border-color:var(--brand)}
+ 

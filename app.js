@@ -182,12 +182,27 @@ const TABLES = [
     fromRow:r=>({id:r.id,branchId:r.branch_id,semesterId:r.semester_id,kind:r.kind,fileName:r.file_name,uploadedAt:r.uploaded_at,added:r.added,dup:r.dup,skip:r.skip}) },
   { key:'teacherChanges',     table:'teacher_changes',      toRow:c=>({id:c.id,branch_id:c.branchId,semester_id:c.semesterId,class_name:c.className,from_teacher:c.fromTeacher,to_teacher:c.toTeacher,date:c.date}),
     fromRow:r=>({id:r.id,branchId:r.branch_id,semesterId:r.semester_id,className:r.class_name,fromTeacher:r.from_teacher,toTeacher:r.to_teacher,date:r.date}) },
+    { key:'examScores', table:'exam_scores',
+    toRow:s=>({id:s.id, student_id:s.studentId, branch_id:s.branchId, semester_id:s.semesterId,
+      exam_type:s.examType, level:s.level, title:s.title,
+      mc_score:s.mcScore, wr_score:s.wrScore, total:s.total,
+      attempt_no:s.attemptNo, graded_at:s.gradedAt}),
+    fromRow:r=>({id:r.id, studentId:r.student_id, branchId:r.branch_id, semesterId:r.semester_id,
+      examType:r.exam_type, level:r.level, title:r.title,
+      mcScore:r.mc_score, wrScore:r.wr_score, total:r.total,
+      attemptNo:r.attempt_no, gradedAt:r.graded_at}) },
+ 
+  { key:'examItems', table:'exam_items',
+    toRow:i=>({id:i.id, score_id:i.scoreId, q_no:i.qNo, kind:i.kind,
+      raw_answer:i.rawAnswer, is_correct:i.isCorrect, awarded:i.awarded}),
+    fromRow:r=>({id:r.id, scoreId:r.score_id, qNo:r.q_no, kind:r.kind,
+      rawAnswer:r.raw_answer, isCorrect:r.is_correct, awarded:r.awarded}) },
 ];
 
 function blankDB(){
   return { users:[], branches:[], semesters:[], students:[],
            semesterRecords:[], counselingHistories:[], studentMovements:[],
-           uploadBatches:[], teacherChanges:[] };
+           uploadBatches:[], teacherChanges:[],examScores:[], examItems:[] };
 }
 let db = null;
 
@@ -700,6 +715,7 @@ function buildShell(){
     stu:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>',
     roster:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/></svg>',
     closing:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><rect x="7" y="10" width="3" height="7"/><rect x="13" y="6" width="3" height="11"/></svg>',
+    exam:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3 8-8"/><rect x="3" y="4" width="18" height="16" rx="2"/></svg>',
   };
   if(isAdmin){
     nav.innerHTML = `
@@ -715,6 +731,7 @@ function buildShell(){
       <div class="sb-item" data-nav="roster">${I.roster}<span>신규·퇴원 명단</span></div>
       <div class="sb-item" data-nav="closing">${I.closing}<span>인원마감표</span></div>
       <div class="sb-item" data-nav="students">${I.stu}<span>학생관리</span></div>
+      <div class="sb-item" data-nav="exam">${I.exam}<span>시험관리</span></div>
       <div class="sb-item" data-nav="data">${I.data}<span>데이터관리</span></div>`;
   }
   nav.querySelectorAll('[data-nav]').forEach(it=>{
@@ -752,6 +769,7 @@ function render(){
   if(session.role==='admin'){
     if(root==='branch' && parts[1]!=='teacher' && parts[1]!=='class'){ go('admin'); return; }
     if(root==='data'||root==='students'){ go('admin'); return; }
+    if(root==='exam'){ go('admin'); return; }
   }
   if(session.role==='branch' && (root==='admin'||root==='accounts')){ go('branch'); return; }
   // 분원 계정은 자기 분원 roster 상세만 (다른 분원 직접 접근 차단)
@@ -769,6 +787,10 @@ function render(){
     else { setActiveNav('branch'); renderBranchDashboard(); }
   } else if(root==='data'){ setActiveNav('data'); renderDataManagement(); }
   else if(root==='students'){ setActiveNav('students'); renderStudentManagement(); }
+  else if(root==='exam'){
+    if(parts[1]==='grade'){ setActiveNav('exam'); renderExamGrade(); }
+    else { setActiveNav('exam'); renderExamHome(); }
+  }
   else if(root==='roster'){
     if(parts[1]==='branch' && parts[2]){ setActiveNav('roster'); renderRosterDetail(parts[2]); }
     else { setActiveNav('roster'); renderRoster(); }
@@ -2801,4 +2823,331 @@ async function init(){
     showLogin();
   }
 }
+const EXAM_TYPES = [
+  { key:'DT',      label:'DT (진단)' },
+  { key:'writing', label:'라이팅' },
+  { key:'jump',    label:'점프 테스트' },
+];
+const CHESS_LEVELS = ['IS1','IS2','DSA1','DSA2','DSB1','DSB2','DSC1','DSC2','DSD1','DSD2',
+  'LSA1','LSA2','LSB1','LSB2','LSC1','LSC2','MSA1','MSA2','MSB1','MSB2'];
+ 
+/* 시험관리 홈 — 이번 학기 채점 현황 + 새 채점 시작 */
+function renderExamHome(){
+  const branchId = session.branchId;
+  const b = getBranch(branchId);
+  const semId = state.semId;
+  crumbs([{label:'시험관리'}]);
+ 
+  const scores = (db.examScores||[]).filter(s=>s.branchId===branchId && s.semesterId===semId);
+  // 시험종류별 집계
+  const byType = EXAM_TYPES.map(t=>{
+    const list = scores.filter(s=>s.examType===t.key);
+    const avg = list.length ? Math.round(list.reduce((a,c)=>a+(+c.total||0),0)/list.length*10)/10 : null;
+    return { ...t, count:list.length, avg };
+  });
+ 
+  el('content').innerHTML = `
+    <div class="page-head">
+      <h2>시험관리</h2>
+      <div class="sub">${esc(b.name)} · ${esc(db.semesters.find(s=>s.id===semId).name)} · 스캔 채점으로 점수를 한 번에 산출합니다</div>
+    </div>
+    <div class="kpi-row c3">
+      ${byType.map(t=>kpiCard(t.label, t.count, {unit:'명 채점'})).join('')}
+    </div>
+    <div class="sect-head"><h3>시험종류별 현황</h3></div>
+    <div class="card-grid g3">
+      ${byType.map(t=>`
+        <div class="card">
+          <div class="card-top">
+            <div><div class="card-name">${esc(t.label)}</div>
+              <div class="card-sub">채점 ${t.count}명${t.avg!=null?` · 평균 ${t.avg}점`:''}</div></div>
+          </div>
+        </div>`).join('')}
+    </div>
+    <div style="margin-top:24px">
+      <button class="btn primary" onclick="go('exam/grade')">+ 새 시험 채점 시작</button>
+    </div>
+    ${scores.length?`
+    <div class="sect-head"><h3>최근 채점 내역</h3></div>
+    <div class="table-wrap"><div class="table-scroll">
+      <table class="grid">
+        <thead><tr><th>학생</th><th>회원코드</th><th>시험</th><th>레벨</th><th class="cc">객관식</th><th class="cc">주관식</th><th class="cc">합계</th><th>채점일</th></tr></thead>
+        <tbody>
+        ${scores.slice(-50).reverse().map(s=>{
+          const stu=getStudent(s.studentId);
+          const tlabel=(EXAM_TYPES.find(t=>t.key===s.examType)||{}).label||s.examType;
+          return `<tr>
+            <td class="st-name">${esc(stu?stu.name:'?')}</td>
+            <td><span class="code-chip">${esc(stu?stu.code:'')}</span></td>
+            <td>${esc(tlabel)}</td><td>${esc(s.level||'')}</td>
+            <td class="cc num">${s.mcScore??'–'}</td>
+            <td class="cc num">${s.wrScore??'–'}</td>
+            <td class="cc num" style="font-weight:700">${s.total??'–'}</td>
+            <td class="num" style="color:var(--ink-3);font-size:12px">${esc((s.gradedAt||'').slice(0,10))}</td>
+          </tr>`;
+        }).join('')}
+        </tbody>
+      </table>
+    </div></div>`:''}
+  `;
+}
+ 
+/* 채점 화면 — 시험 설정 + PDF + 빠른 채점. (분원 학생 명단을 자동으로 사용) */
+function renderExamGrade(){
+  const branchId = session.branchId;
+  const b = getBranch(branchId);
+  const semId = state.semId;
+  crumbs([{label:'시험관리', go:'exam'},{label:'채점'}]);
+ 
+  el('content').innerHTML = `
+    ${backLink('시험관리','exam')}
+    <div class="page-head">
+      <h2>시험 채점</h2>
+      <div class="sub">정답을 등록하고 스캔 PDF를 올리면, 학생별로 채점해 저장합니다</div>
+    </div>
+ 
+    <div class="panel" style="margin-bottom:16px">
+      <div class="panel-head"><div class="pi" style="background:var(--brand-soft);color:var(--brand)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3 8-8"/><rect x="3" y="4" width="18" height="16" rx="2"/></svg></div>
+        <div><h3>1. 시험 설정 & 정답</h3></div></div>
+      <div class="form-row">
+        <div class="field"><label>시험 종류</label>
+          <select id="exType">${EXAM_TYPES.map(t=>`<option value="${t.key}">${t.label}</option>`).join('')}</select></div>
+        <div class="field"><label>레벨</label>
+          <select id="exLevel">${CHESS_LEVELS.map(l=>`<option>${l}</option>`).join('')}</select></div>
+        <div class="field"><label>시험 제목</label><input id="exTitle" placeholder="예: 2025-1 DSB1 DT"></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>객관식 문항 수</label><input id="exNumMC" type="number" value="20" oninput="exBuildMC()"></div>
+        <div class="field"><label>보기 수</label><select id="exNumCh" onchange="exBuildMC()"><option>3</option><option>4</option><option selected>5</option></select></div>
+        <div class="field"><label>문항당 배점</label><input id="exPts" type="number" step="0.5" value="2.5" oninput="exUpdateScore()"></div>
+      </div>
+      <div class="field full">
+        <label>정답 — 한 줄에 쭉 (예: 13242… 또는 1,3,2,4)</label>
+        <input id="exKey" placeholder="문항 순서대로" oninput="exParseKey()">
+        <div class="pd" id="exKeyStatus" style="margin-top:6px"></div>
+      </div>
+      <div class="field full">
+        <label>주관식 구성 (선택) — "문항:칸수" 콤마 (예: 1:1, 3:2, 7:3)</label>
+        <input id="exSubj" placeholder="비우면 주관식 없음" oninput="exBuildSubj()">
+      </div>
+    </div>
+ 
+    <div class="panel" style="margin-bottom:16px">
+      <div class="panel-head"><div class="pi" style="background:var(--pos-soft);color:var(--pos)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></div>
+        <div><h3>2. 스캔 PDF</h3></div></div>
+      <div class="pd">학생별 OMR이 한 파일로 묶인 스캔 PDF를 올리세요. QR로 학생을 자동 식별합니다. (명단은 이 분원·학기 학생을 자동 사용)</div>
+      <input type="file" id="exPdf" accept="application/pdf" onchange="exLoadPDF()">
+      <div class="pd" id="exPdfStatus" style="margin-top:8px"></div>
+    </div>
+ 
+    <div id="exWork" style="display:none">
+      <div class="dm-grid">
+        <div class="panel">
+          <div class="panel-head"><div><h3 style="font-size:14px">스캔 페이지</h3></div></div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+            <button class="btn sm" onclick="exPrev()">◀</button>
+            <span style="flex:1;text-align:center;font-weight:700" id="exPageInfo"></span>
+            <button class="btn sm" onclick="exNext()">▶</button>
+          </div>
+          <div class="field full" style="margin-bottom:8px">
+            <select id="exAssign" onchange="exAssignStudent()"></select>
+            <div class="pd" id="exQrStatus" style="margin-top:4px"></div>
+          </div>
+          <div style="background:var(--surface-2);border-radius:11px;overflow:auto;max-height:70vh;text-align:center">
+            <canvas id="exCanvas" style="max-width:100%"></canvas>
+          </div>
+        </div>
+ 
+        <div>
+          <div class="panel">
+            <div class="panel-head"><div><h3 style="font-size:14px">객관식</h3></div></div>
+            <div class="pd">①~⑤ 클릭 또는 숫자키로 답 입력 · 초록=정답, 빨강=오답</div>
+            <div id="exMC" style="display:flex;gap:14px"></div>
+          </div>
+          <div class="panel" id="exSubjCard" style="display:none;margin-top:14px">
+            <div class="panel-head"><div><h3 style="font-size:14px">주관식</h3></div></div>
+            <div id="exSubjInput"></div>
+          </div>
+          <div class="rate-panel" style="grid-template-columns:1fr 1fr 1fr;margin-top:14px">
+            <div class="rate-cell"><div class="rcl">객관식</div><div class="rcv num" id="exMcScore">0</div></div>
+            <div class="rate-cell"><div class="rcl">주관식</div><div class="rcv num" id="exWrScore">0</div></div>
+            <div class="rate-cell total"><div class="rcl">합계</div><div class="rcv num" id="exTotal">0</div></div>
+          </div>
+          <div style="margin-top:14px;display:flex;gap:8px">
+            <button class="btn primary" style="flex:1" onclick="exSave()">이 학생 저장</button>
+            <button class="btn" onclick="exNext()">저장 후 다음 ▶</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  exState = { pdf:null, page:1, pages:0, key:[], subj:[], data:{}, activeQ:1 };
+  exBuildMC();
+}
+ 
+/* ───── 채점 상태 & 로직 ───── */
+let exState = null;
+const EX_CIRCLED=['①','②','③','④','⑤','⑥'];
+ 
+function exParseKey(){
+  const raw=el('exKey').value.trim();
+  exState.key = !raw ? [] : (raw.includes(',')||raw.includes(' ') ? raw.split(/[,\s]+/).filter(Boolean) : raw.split(''));
+  const n=+el('exNumMC').value;
+  el('exKeyStatus').innerHTML = exState.key.length===n
+    ? `<span class="status-badge active">${n}문항 정답 등록</span>`
+    : `<span class="status-badge withdraw">${exState.key.length}개 / 문항수 ${n}</span>`;
+  exGradeAll();
+}
+function exBuildMC(){
+  const n=+el('exNumMC').value||0, ch=+el('exNumCh').value||5, half=Math.ceil(n/2);
+  const mk=q=>{
+    let opts='';
+    for(let c=1;c<=ch;c++) opts+=`<button class="ex-opt" onclick="exPick(${q},${c})" id="exo${q}_${c}">${EX_CIRCLED[c-1]}</button>`;
+    return `<div class="ex-q" id="exq${q}"><span class="ex-qn">${q}</span><div class="ex-opts">${opts}</div><span class="ex-mk" id="exmk${q}"></span></div>`;
+  };
+  let L='',R='';
+  for(let q=1;q<=half;q++) L+=mk(q);
+  for(let q=half+1;q<=n;q++) R+=mk(q);
+  el('exMC').innerHTML = `<div style="flex:1">${L}</div><div style="flex:1">${R}</div>`;
+  exParseKey();
+}
+function exPick(q,c){
+  if(!exState.data[exState.page]) exState.data[exState.page]={mc:{},subj:{}};
+  exState.data[exState.page].mc[q]=c; exState.activeQ=q;
+  exPaint(q); exUpdateScore();
+}
+function exPaint(q){
+  const row=el('exq'+q); if(!row) return;
+  const sel=exState.data[exState.page]?.mc?.[q];
+  row.querySelectorAll('.ex-opt').forEach((b,i)=>b.classList.toggle('sel',sel===i+1));
+  row.classList.remove('correct','wrong');
+  const mk=el('exmk'+q); if(mk) mk.textContent='';
+  if(sel && exState.key.length>=q){
+    if(String(sel)===String(exState.key[q-1])){ row.classList.add('correct'); if(mk)mk.textContent='✓'; }
+    else { row.classList.add('wrong'); if(mk)mk.textContent='✕'; }
+  }
+}
+function exGradeAll(){ const n=+el('exNumMC').value||0; for(let q=1;q<=n;q++) exPaint(q); exUpdateScore(); }
+function exGetMC(){
+  const n=+el('exNumMC').value||0, pts=+el('exPts').value||0; let ok=0;
+  for(let q=1;q<=n;q++){ const sel=exState.data[exState.page]?.mc?.[q];
+    if(sel && exState.key.length>=q && String(sel)===String(exState.key[q-1])) ok++; }
+  return ok*pts;
+}
+function exBuildSubj(){
+  const cfg=el('exSubj').value.trim(); exState.subj=[]; const box=el('exSubjInput');
+  if(!cfg){ el('exSubjCard').style.display='none'; box.innerHTML=''; exUpdateScore(); return; }
+  el('exSubjCard').style.display='block';
+  cfg.split(',').forEach(p=>{ const[q,cells]=p.split(':').map(s=>s.trim()); if(q) exState.subj.push({q,cells:+cells||1}); });
+  box.innerHTML='';
+  exState.subj.forEach(it=>{ for(let k=1;k<=it.cells;k++){
+    const label=it.cells>1?`${it.q}-${k}`:`${it.q}`;
+    let segs=''; for(let p=0;p<=2;p++) segs+=`<button onclick="exSetSubj('${label}',${p},this)">${p}</button>`;
+    const r=document.createElement('div'); r.className='ex-subj-row';
+    r.innerHTML=`<span class="ex-subj-lab">${label})</span><div class="ex-seg" data-label="${label}">${segs}</div>`;
+    box.appendChild(r);
+  }});
+  exUpdateScore();
+}
+function exSetSubj(label,pt,btn){
+  [...btn.parentElement.children].forEach(b=>b.classList.remove('on')); btn.classList.add('on');
+  if(!exState.data[exState.page]) exState.data[exState.page]={mc:{},subj:{}};
+  exState.data[exState.page].subj[label]=pt; exUpdateScore();
+}
+function exGetWR(){ return exState.data[exState.page]?Object.values(exState.data[exState.page].subj||{}).reduce((a,b)=>a+(+b||0),0):0; }
+function exUpdateScore(){
+  const mc=exGetMC(), wr=exGetWR();
+  el('exMcScore').textContent=mc; el('exWrScore').textContent=wr; el('exTotal').textContent=mc+wr;
+}
+ 
+/* 키보드: 숫자=답, Enter=다음 */
+document.addEventListener('keydown', e=>{
+  if(!exState || el('exWork')?.style.display==='none') return;
+  if(['INPUT','SELECT','TEXTAREA'].includes(document.activeElement.tagName)) return;
+  const n=+el('exNumMC').value||0;
+  if(e.key>='1'&&e.key<='6'){ exPick(exState.activeQ,+e.key); if(exState.activeQ<n) exState.activeQ++; }
+  if(e.key==='Enter' && exState.activeQ<n) exState.activeQ++;
+  if(e.key==='Backspace' && exState.activeQ>1) exState.activeQ--;
+});
+ 
+/* PDF (pdf.js + jsQR — index.html에 CDN 추가 필요, [추가 6] 참고) */
+async function exLoadPDF(){
+  const f=el('exPdf').files[0]; if(!f) return;
+  el('exPdfStatus').textContent='불러오는 중…';
+  const buf=await f.arrayBuffer();
+  exState.pdf=await pdfjsLib.getDocument({data:buf}).promise;
+  exState.pages=exState.pdf.numPages;
+  el('exPdfStatus').innerHTML=`<span class="status-badge active">${exState.pages}페이지 로드</span>`;
+  el('exWork').style.display='block';
+  exFillAssign(); exState.page=1; await exRender();
+}
+function exFillAssign(){
+  const recs=activeRecordsOf(session.branchId, state.semId);
+  el('exAssign').innerHTML='<option value="">— 학생 선택 —</option>'+
+    recs.map(r=>{const s=getStudent(r.studentId);return `<option value="${s.code}">${esc(s.name)} (${esc(s.code)})</option>`;}).join('');
+}
+async function exRender(){
+  const page=await exState.pdf.getPage(exState.page);
+  const vp=page.getViewport({scale:1.5});
+  const cv=el('exCanvas'); cv.width=vp.width; cv.height=vp.height;
+  await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
+  el('exPageInfo').textContent=`${exState.page} / ${exState.pages}`;
+  if(!exState.data[exState.page]) exState.data[exState.page]={studentCode:'',mc:{},subj:{},saved:false};
+  exTryQR(cv);
+  el('exAssign').value=exState.data[exState.page].studentCode||'';
+  exRestore();
+}
+function exTryQR(cv){
+  try{
+    const ctx=cv.getContext('2d'); const img=ctx.getImageData(0,0,cv.width,cv.height);
+    const code=jsQR(img.data,img.width,img.height); const st=el('exQrStatus');
+    if(code&&code.data&&code.data.startsWith('JLS:')){
+      const c=code.data.slice(4); exState.data[exState.page].studentCode=c;
+      el('exAssign').value=c;
+      const stu=db.students.find(s=>s.code===c);
+      st.innerHTML=`<span class="status-badge active">QR 자동: ${esc(stu?stu.name:c)}</span>`;
+    } else st.innerHTML=`<span class="status-badge withdraw">QR 못 읽음 — 직접 선택</span>`;
+  }catch(e){ el('exQrStatus').textContent=''; }
+}
+function exAssignStudent(){ exState.data[exState.page].studentCode=el('exAssign').value; }
+function exPrev(){ if(exState.page>1){ exState.page--; exRender(); } }
+function exNext(){ exSave(true); if(exState.page<exState.pages){ exState.page++; exRender(); } }
+function exRestore(){
+  const n=+el('exNumMC').value||0; for(let q=1;q<=n;q++) exPaint(q);
+  document.querySelectorAll('.ex-seg').forEach(seg=>{
+    const v=exState.data[exState.page]?.subj?.[seg.dataset.label];
+    [...seg.children].forEach(b=>b.classList.toggle('on', v!==undefined && +b.textContent===v));
+  });
+  exState.activeQ=1; exUpdateScore();
+}
+ 
+/* 저장 — examScores에 시험별 1행 upsert (회원코드+학기+시험종류+레벨로 구분) */
+async function exSave(silent){
+  const d=exState.data[exState.page]; if(!d) return;
+  if(!d.studentCode){ if(!silent) toast('학생을 먼저 배정하세요','err'); return; }
+  const stu=db.students.find(s=>s.code===d.studentCode);
+  if(!stu){ if(!silent) toast('명단에 없는 학생입니다','err'); return; }
+  const branchId=session.branchId, semId=state.semId;
+  const examType=el('exType').value, level=el('exLevel').value, title=el('exTitle').value.trim();
+  const mc=exGetMC(), wr=exGetWR();
+ 
+  // 같은 학생·학기·시험종류·레벨이면 갱신(재시험은 attempt_no 올림 — 여기선 단순 덮어쓰기)
+  let row=(db.examScores||[]).find(s=>s.studentId===stu.id && s.semesterId===semId
+    && s.examType===examType && s.level===level && s.branchId===branchId);
+  if(row){
+    row.mcScore=mc; row.wrScore=wr; row.total=mc+wr; row.title=title; row.gradedAt=nowStamp();
+  } else {
+    row={ id:uid('exs'), studentId:stu.id, branchId, semesterId:semId, examType, level, title,
+      mcScore:mc, wrScore:wr, total:mc+wr, attemptNo:1, gradedAt:nowStamp() };
+    (db.examScores||(db.examScores=[])).push(row);
+  }
+  d.saved=true;
+  const ok=await saveDB();
+  if(!silent) toast(ok?`✅ ${stu.name} 저장 · 합계 ${mc+wr}점`:'저장 실패, 다시 시도','ok');
+}
+}
+
+pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
 init();
