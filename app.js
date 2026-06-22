@@ -3202,7 +3202,24 @@ async function exSave(silent){
   const ok=await saveDB();
   if(!silent) toast(ok?`✅ ${stu.name} 저장 · 합계 ${mc+wr}점`:'저장 실패, 다시 시도','ok');
 }
- 
+ async function init(){
+  el('loginBtn').onclick = doLogin;
+  el('logoutBtn').onclick = logout;
+  ['loginId','loginPw'].forEach(id=> el(id).addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); }));
+  const lb = el('loginBtn');
+  lb.disabled = true; lb.textContent = '서버 연결 중…';
+  try{
+    await loadDB();
+    loadSession();
+    lb.disabled = false; lb.textContent = '로그인';
+    if(session){ enterApp(); } else { showLogin(); }
+  }catch(e){
+    console.error(e);
+    lb.disabled = false; lb.textContent = '로그인';
+    el('loginErr').textContent = '서버 연결에 실패했습니다. 새로고침하거나 인터넷 연결을 확인하세요.';
+    showLogin();
+  }
+}
 /* ============================================================================
    부트스트랩 실행 (반드시 파일 맨 끝, 단 한 번)
    ============================================================================ */
