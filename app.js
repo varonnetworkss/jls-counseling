@@ -3147,7 +3147,5 @@ async function exSave(silent){
   const ok=await saveDB();
   if(!silent) toast(ok?`✅ ${stu.name} 저장 · 합계 ${mc+wr}점`:'저장 실패, 다시 시도','ok');
 }
-}
-
 pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
 init();
