@@ -1212,34 +1212,6 @@ function renderBranchDashboard(){
   } else {
     html += `<div class="card-grid g3">` + teacherCardsSection(teachers, branchId, 'branch').cards + `</div>`;
   }
-  // 내신반 섹션 — 인원 카운팅엔 안 들어가지만, 상담표 진입용으로 표시
-  const examRecs = examRecordsOf(branchId, semId);
-  if(examRecs.length>0){
-    const examClassMap = new Map();
-    examRecs.forEach(r=>{
-      if(!examClassMap.has(r.className)) examClassMap.set(r.className, []);
-      examClassMap.get(r.className).push(r);
-    });
-    const examCards = [...examClassMap.entries()].map(([className, crecs])=>{
-      const teacher = crecs[0].teacher;
-      const rates = calcRates(crecs, branchId, semId);  // 면제받은 회차만 대상으로 잡힘
-      return `<div class="card clickable" onclick="go('branch/class/${encodeURIComponent(teacher)}/${encodeURIComponent(className)}')">
-        <div class="card-top">
-          <div>
-            <div class="card-name">${esc(className)}</div>
-            <div class="card-sub">${esc(teacher)} 담임 · 학생 ${crecs.length}명 <span style="color:var(--warn)">(인원 미집계)</span></div>
-          </div>
-          <div class="card-rate">
-            <div class="r num" style="color:${rateColor(rates.totalRate)}">${rates.totalTarget?rates.totalRate+'%':'–'}</div>
-            <div class="rl">내신 MC</div>
-          </div>
-        </div>
-        <div class="card-foot"><span class="incomplete-tag">내신반</span>${goArrow}</div>
-      </div>`;
-    }).join('');
-    html += `<div class="sect-head"><h3>내신반</h3><span class="cnt">내신기간 MC 진행 · 정규 인원에는 포함되지 않음</span></div>
-      <div class="card-grid g3">${examCards}</div>`;
-  }
   el('content').innerHTML = html;
 }
 
@@ -1319,6 +1291,27 @@ function renderTeacherDetail(teacher){
     </div>`;
   }).join('');
   html += `</div>`;
+
+  // 이 담임의 내신반 (인원 집계엔 안 들어가지만 상담표 진입용)
+  const examTrecs = examRecordsOf(branchId, semId).filter(r=>r.teacher===teacher);
+  if(examTrecs.length>0){
+    const examClassMap = new Map();
+    examTrecs.forEach(r=>{ if(!examClassMap.has(r.className)) examClassMap.set(r.className,[]); examClassMap.get(r.className).push(r); });
+    const examCards = [...examClassMap.entries()].map(([className, crecs])=>{
+      const rs = calcRates(crecs, branchId, semId);
+      return `<div class="card clickable" onclick="go('branch/class/${encodeURIComponent(teacher)}/${encodeURIComponent(className)}')">
+        <div class="card-top">
+          <div><div class="card-name">${esc(className)}</div>
+            <div class="card-sub">학생 ${crecs.length}명 <span style="color:var(--warn)">(인원 미집계)</span></div></div>
+          <div class="card-rate"><div class="r num" style="color:${rateColor(rs.totalRate)}">${rs.totalTarget?rs.totalRate+'%':'–'}</div>
+            <div class="rl">내신 MC</div></div>
+        </div>
+        <div class="card-foot"><span class="incomplete-tag">내신반</span>${goArrow}</div>
+      </div>`;
+    }).join('');
+    html += `<div class="sect-head"><h3>내신반</h3><span class="cnt">내신기간 MC 진행 · 정규 인원에는 포함되지 않음</span></div>
+      <div class="card-grid g4">${examCards}</div>`;
+  }
   el('content').innerHTML = html;
 }
 function classSortBtn(key,label){
