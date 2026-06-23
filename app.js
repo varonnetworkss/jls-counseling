@@ -166,8 +166,8 @@ let dbSnapshot = null;      // 마지막으로 서버와 동기화된 상태(dif
 const TABLES = [
   { key:'branches',           table:'branches',             toRow:b=>({id:b.id,name:b.name}),
     fromRow:r=>({id:r.id,name:r.name}) },
-  { key:'users',              table:'users',                toRow:u=>({id:u.id,username:u.username,password:u.password,role:u.role,branch_id:u.branchId}),
-    fromRow:r=>({id:r.id,username:r.username,password:r.password,role:r.role,branchId:r.branch_id}) },
+{ key:'users', table:'users', toRow:u=>({id:u.id,username:u.username,password:u.password,role:u.role,branch_id:u.branchId,teacher_name:u.teacherName||null}),
+    fromRow:r=>({id:r.id,username:r.username,password:r.password,role:r.role,branchId:r.branch_id,teacherName:r.teacher_name}) },
   { key:'semesters',          table:'semesters',            toRow:s=>({id:s.id,name:s.name}),
     fromRow:r=>({id:r.id,name:r.name}) },
   { key:'students',           table:'students',             toRow:s=>({id:s.id,code:s.code,name:s.name,school:s.school,grade:s.grade}),
@@ -656,7 +656,7 @@ function doLogin(){
   const p = el('loginPw').value;
   const user = db.users.find(x=>x.username===u && x.password===p);
   if(!user){ el('loginErr').textContent = '아이디 또는 비밀번호가 올바르지 않습니다.'; return; }
-  setSession({ userId:user.id, username:user.username, role:user.role, branchId:user.branchId });
+  setSession({ userId:user.id, username:user.username, role:user.role, branchId:user.branchId, teacherName:user.teacherName||null });
   el('loginErr').textContent='';
   el('loginPw').value='';
   enterApp();
@@ -667,12 +667,11 @@ function showLogin(){ el('appView').style.display='none'; el('loginView').style.
 function enterApp(){
   el('loginView').style.display='none';
   el('appView').style.display='block';
-  // 오늘 날짜 기준 현재 학기를 기본 선택 (없으면 목록 첫 번째)
   const cur = currentSemester();
   state.semId = db.semesters.some(s=>s.id===cur.id) ? cur.id : (db.semesters[0] ? db.semesters[0].id : null);
   buildShell();
   if(!location.hash || location.hash==='#'){
-    location.hash = session.role==='admin' ? '#/admin' : '#/branch';
+    location.hash = session.role==='admin' ? '#/admin' : (session.role==='teacher' ? '#/myclasses' : '#/branch');
   } else { render(); }
 }
 
@@ -681,13 +680,14 @@ function enterApp(){
    ============================================================================ */
 function buildShell(){
   const isAdmin = session.role==='admin';
+  const isTeacher = session.role==='teacher';
   const branch = isAdmin ? null : getBranch(session.branchId);
-  el('sbScope').textContent = isAdmin ? '통합 관리자' : (branch?branch.name:'분원');
+  el('sbScope').textContent = isAdmin ? '통합 관리자' : (isTeacher ? (branch?branch.name:'분원')+' 선생님' : (branch?branch.name:'분원'));
   el('sbAvatar').textContent = (session.username[0]||'U').toUpperCase();
-  el('sbUserName').textContent = isAdmin ? '관리자' : (branch?branch.name:session.username);
+  el('sbUserName').textContent = isAdmin ? '관리자' : (isTeacher ? (session.teacherName||session.username) : (branch?branch.name:session.username));
   el('sbUserRole').textContent = session.username;
 
-  // 학기 선택 — 분원 계정만 '다음 학기 추가' 옵션 노출 (관리자는 보기 전용)
+  // 학기 선택 — 분원 계정만 '다음 학기 추가' 옵션 노출 (관리자·선생님은 보기 전용)
   const sel = el('semSelect');
   const isBranch = session.role==='branch';
   sel.innerHTML = db.semesters.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('')
@@ -697,7 +697,7 @@ function buildShell(){
     if(sel.value==='__add_next__'){ addNextSemester(); return; }
     state.semId = sel.value; render();
   };
-  // 학기 삭제 버튼 — 분원 계정만 (자기 분원의 그 학기 데이터만 삭제). 관리자는 숨김.
+  // 학기 삭제 버튼 — 분원 계정만. 관리자·선생님은 숨김.
   const delBtn = el('semDelBtn');
   if(delBtn){
     delBtn.style.display = isBranch ? 'inline-flex' : 'none';
@@ -713,7 +713,7 @@ function buildShell(){
     stu:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>',
     roster:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/></svg>',
     closing:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><rect x="7" y="10" width="3" height="7"/><rect x="13" y="6" width="3" height="11"/></svg>',
-    exam:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3 8-8"/><rect x="3" y="4" width="18" height="16" rx="2"/></svg>',
+    teach:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>',
   };
   if(isAdmin){
     nav.innerHTML = `
@@ -722,6 +722,10 @@ function buildShell(){
       <div class="sb-item" data-nav="roster">${I.roster}<span>신규·퇴원 명단</span></div>
       <div class="sb-item" data-nav="closing">${I.closing}<span>인원마감표</span></div>
       <div class="sb-item" data-nav="accounts">${I.acct}<span>분원 계정 관리</span></div>`;
+  } else if(isTeacher){
+    nav.innerHTML = `
+      <div class="sb-sect">선생님</div>
+      <div class="sb-item" data-nav="myclasses">${I.dash}<span>내 반 현황</span></div>`;
   } else {
     nav.innerHTML = `
       <div class="sb-sect">분원</div>
@@ -729,6 +733,7 @@ function buildShell(){
       <div class="sb-item" data-nav="roster">${I.roster}<span>신규·퇴원 명단</span></div>
       <div class="sb-item" data-nav="closing">${I.closing}<span>인원마감표</span></div>
       <div class="sb-item" data-nav="students">${I.stu}<span>학생관리</span></div>
+      <div class="sb-item" data-nav="teachers">${I.teach}<span>선생님 계정</span></div>
       <div class="sb-item" data-nav="data">${I.data}<span>데이터관리</span></div>`;
   }
   nav.querySelectorAll('[data-nav]').forEach(it=>{
@@ -767,6 +772,12 @@ function render(){
     if(root==='branch' && parts[1]!=='teacher' && parts[1]!=='class'){ go('admin'); return; }
     if(root==='data'||root==='students'){ go('admin'); return; }
   }
+  // 선생님: 자기 반 관련 화면만 (myclasses / branch teacher·class 상세)
+  if(session.role==='teacher'){
+    const allowed = (root==='myclasses')
+      || (root==='branch' && (parts[1]==='teacher' || parts[1]==='class'));
+    if(!allowed){ go('myclasses'); return; }
+  }
   if(session.role==='branch' && (root==='admin'||root==='accounts')){ go('branch'); return; }
   // 분원 계정은 자기 분원 roster 상세만 (다른 분원 직접 접근 차단)
   if(session.role==='branch' && root==='roster' && parts[1]==='branch' && parts[2] && parts[2]!==session.branchId){ go('roster'); return; }
@@ -794,6 +805,8 @@ function render(){
       else { setActiveNav('closing'); renderClosingHub(); }
     } else { setActiveNav('closing'); renderClosing(session.branchId); }
   }
+  else if(root==='teachers'){ setActiveNav('teachers'); renderTeacherAccounts(); }
+  else if(root==='myclasses'){ setActiveNav('myclasses'); renderTeacherHome(); }
   else { go(session.role==='admin'?'admin':'branch'); return; }
   el('content').scrollIntoView({block:'start'});
   window.scrollTo(0,0);
@@ -2764,7 +2777,148 @@ function deleteAccount(uid){
     db.users=db.users.filter(x=>x.id!==uid); saveDB(); closeModal(); toast('계정 삭제됨','ok'); render();
   });
 }
+/* ============================================================================
+   17-2. 분원 — 선생님 계정 관리 (전체명단 담임 드롭다운으로 생성)
+   ============================================================================ */
+function renderTeacherAccounts(){
+  const branchId = session.branchId;
+  const b = getBranch(branchId);
+  const semId = state.semId;
+  crumbs([{label:'선생님 계정'}]);
 
+  // 이 분원 이번 학기 전체명단에 등록된 담임 이름 목록 (드롭다운용)
+  const teacherNames = [...new Set(
+    activeRecordsOf(branchId, semId).map(r=>r.teacher).filter(t=>t && t!=='미배정')
+  )].sort((a,b)=>a.localeCompare(b,'ko'));
+
+  // 이 분원 선생님 계정들
+  const teacherUsers = db.users.filter(u=>u.role==='teacher' && u.branchId===branchId);
+
+  el('content').innerHTML = `
+    <div class="page-head"><h2>선생님 계정</h2>
+      <div class="sub">${esc(b.name)} · 선생님 계정을 만들면 자기 담당 반의 상담 현황만 볼 수 있습니다. 담당 반은 전체명단의 담임 이름으로 자동 연결됩니다.</div></div>
+    <div class="panel" style="margin-bottom:16px">
+      <h3 style="font-size:14.5px;font-weight:650;margin-bottom:14px">새 선생님 계정 생성</h3>
+      <div class="acct-add">
+        <div class="field"><label>담임 선생님</label>
+          <select id="tcAcctName">
+            <option value="">전체명단에서 선택…</option>
+            ${teacherNames.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('')}
+          </select></div>
+        <div class="field"><label>아이디</label><input id="tcAcctUser" placeholder="영문 아이디"></div>
+        <div class="field"><label>비밀번호</label><input id="tcAcctPw" placeholder="비밀번호"></div>
+        <button class="btn primary" onclick="createTeacherAccount()">계정 생성</button>
+      </div>
+      ${teacherNames.length===0?`<div class="pd" style="margin-top:10px;color:var(--neg)">이번 학기 전체명단이 업로드되어야 담임 목록이 나옵니다. 먼저 데이터관리에서 명단을 올려주세요.</div>`:''}
+    </div>
+    <div class="table-wrap">
+      <div class="table-scroll"><table class="grid">
+        <thead><tr><th>담임</th><th>담당 반</th><th>아이디</th><th>비밀번호</th><th class="cc">관리</th></tr></thead>
+        <tbody>
+          ${teacherUsers.length===0?`<tr><td colspan="5" style="padding:16px;color:var(--ink-3);text-align:center">아직 만든 선생님 계정이 없습니다.</td></tr>`:
+          teacherUsers.map(u=>{
+            const clsCnt = new Set(activeRecordsOf(branchId, semId).filter(r=>r.teacher===u.teacherName).map(r=>r.className)).size;
+            return `<tr>
+              <td><b>${esc(u.teacherName||'(미지정)')}</b></td>
+              <td>${clsCnt}개 반</td>
+              <td><span class="code-chip">${esc(u.username)}</span></td>
+              <td style="color:var(--ink-3)">${esc(u.password)}</td>
+              <td class="cc"><button class="btn sm" style="color:var(--neg)" onclick="deleteAccount('${u.id}')">삭제</button></td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table></div>
+    </div>`;
+}
+function createTeacherAccount(){
+  const branchId = session.branchId;
+  const tname = el('tcAcctName').value;
+  const user = el('tcAcctUser').value.trim(), pw = el('tcAcctPw').value.trim();
+  if(!tname){ toast('담임 선생님을 선택하세요','err'); return; }
+  if(!user||!pw){ toast('아이디와 비밀번호를 입력하세요','err'); return; }
+  if(db.users.some(u=>u.username===user)){ toast('이미 존재하는 아이디입니다','err'); return; }
+  db.users.push({ id:uid('u'), username:user, password:pw, role:'teacher', branchId, teacherName:tname });
+  saveDB(); toast(`${tname} 선생님 계정 생성 완료`,'ok'); render();
+}
+
+/* ============================================================================
+   17-3. 선생님 — 내 반 현황 (담임 대시보드: 자기 반만)
+   ============================================================================ */
+function renderTeacherHome(){
+  const branchId = session.branchId;
+  const teacher = session.teacherName;
+  const b = getBranch(branchId);
+  const semId = state.semId;
+  state.viewBranchId = branchId;  // 반 상세에서 activeBranchId가 이 분원을 보도록
+  crumbs([{label:`${b?b.name:''} 내 반 현황`}]);
+
+  if(!teacher){
+    el('content').innerHTML = emptyState('담당 담임이 연결되지 않았습니다','분원 관리자에게 계정 설정을 요청하세요.');
+    return;
+  }
+
+  const trecs = activeRecordsOf(branchId, semId).filter(r=>r.teacher===teacher);
+  if(trecs.length===0){
+    el('content').innerHTML = `
+      <div class="page-head"><h2>${esc(teacher)} 선생님</h2>
+        <div class="sub">${esc(b?b.name:'')} · ${esc(db.semesters.find(s=>s.id===semId)?.name||'')}</div></div>
+      ${emptyState('이번 학기 담당 반이 없습니다','전체명단이 업로드되면 담당 반이 표시됩니다.')}`;
+    return;
+  }
+
+  const rates = calcRates(trecs, branchId, semId);
+  const classes = classesOf(branchId, semId, teacher);
+
+  let html = `
+    <div class="page-head">
+      <h2>${esc(teacher)} <span style="font-size:14px;font-weight:500;color:var(--ink-3)">선생님</span></h2>
+      <div class="sub">${esc(b?b.name:'')} · 학생 ${trecs.length}명 · 반 ${classes.length}개 · ${esc(db.semesters.find(s=>s.id===semId)?.name||'')}</div>
+    </div>
+    <div class="sect-head"><h3>전체 상담 진행률</h3></div>
+    ${ratePanel(rates)}
+    <div class="sect-head"><h3>담당 반 목록</h3>
+      <div class="sort-bar">
+        ${classSortBtn('rate_desc','상담률 높은순')}
+        ${classSortBtn('rate_asc','낮은순')}
+        ${classSortBtn('name','반이름순')}
+      </div></div>
+    <div class="card-grid g4">`;
+
+  const ckey = state.classSort;
+  const arr = [...classes];
+  if(ckey==='rate_desc') arr.sort((a,b)=> b.rates.totalRate-a.rates.totalRate);
+  else if(ckey==='rate_asc') arr.sort((a,b)=> a.rates.totalRate-b.rates.totalRate);
+  else arr.sort((a,b)=> a.label.localeCompare(b.label,'ko'));
+  const byRate = [...classes].sort((a,b)=> b.rates.totalRate-a.rates.totalRate);
+  const bestC = byRate.length?byRate[0].className:null;
+  const worstC = byRate.length>1?byRate[byRate.length-1].className:null;
+
+  html += arr.map((cls,i)=>{
+    const r = cls.rates;
+    const rank = (ckey==='rate_desc')?i+1:null;
+    const rankCls = rank===1?'r1':rank===2?'r2':rank===3?'r3':'';
+    const mark = cls.className===bestC?'best':cls.className===worstC?'worst':null;
+    const cardCls = mark==='best'?' best':mark==='worst'?' worst':'';
+    const tag = mark==='best'?'<span class="tag-best">최고</span>':mark==='worst'?'<span class="tag-worst">최저</span>':'';
+    return `<div class="card clickable${cardCls}" onclick="go('branch/class/${encodeURIComponent(teacher)}/${encodeURIComponent(cls.className)}')">
+      ${rank?`<div class="rank-badge ${rankCls}">${rank}</div>`:''}
+      <div class="card-top">
+        <div>
+          <div class="card-name">${esc(cls.label)} ${tag}</div>
+          <div class="card-sub">학생 ${cls.studentCount}명</div>
+        </div>
+        <div class="card-rate">
+          <div class="r num" style="color:${rateColor(r.totalRate)}">${r.totalRate}%</div>
+          <div class="rl">반 상담률</div>
+        </div>
+      </div>
+      ${stageBars(r)}
+      <div class="card-foot">${incompleteTag(r.incompleteStudents)}${goArrow}</div>
+    </div>`;
+  }).join('');
+  html += `</div>`;
+  el('content').innerHTML = html;
+}
 /* ============================================================================
    18. 모달 유틸
    ============================================================================ */
