@@ -320,6 +320,15 @@ function activeRecordsOf(branchId, semId){
 function examRecordsOf(branchId, semId){
   return db.semesterRecords.filter(r=>r.branchId===branchId && r.semesterId===semId && (r.kind||'regular')==='exam' && r.status==='active');
 }
+/* 상담률 계산용 — 정규반 active + 내신반 active 합친 레코드.
+   인원/퇴원 집계엔 쓰지 말 것(그건 recordsOf/activeRecordsOf만). 상담률(calcRates) 전용. */
+function rateRecordsOf(branchId, semId){
+  return activeRecordsOf(branchId, semId).concat(examRecordsOf(branchId, semId));
+}
+/* 특정 담임의 정규+내신 active 합본 (상담률용) */
+function rateRecordsOfTeacher(branchId, semId, teacher){
+  return rateRecordsOf(branchId, semId).filter(r=>r.teacher===teacher);
+}
 
 /* 학기 시작 월 (학기명에서 계절 추출) → [1번째달, 2번째달, 3번째달] */
 function semesterMonths(semId){
@@ -596,9 +605,9 @@ function teachersOf(branchId, semId){
     if(!map.has(r.teacher)) map.set(r.teacher, []);
     map.get(r.teacher).push(r);
   });
-  return [...map.entries()].map(([teacher, trecs])=>{
+ return [...map.entries()].map(([teacher, trecs])=>{
     const classes = new Set(trecs.map(r=>r.className));
-    const rates = calcRates(trecs, branchId, semId);
+    const rates = calcRates(rateRecordsOfTeacher(branchId, semId, teacher), branchId, semId);
     // 이 담임의 퇴원생 수 (status=withdraw, 같은 담임)
     const withdrawCnt = allRecs.filter(r=>r.teacher===teacher && r.status==='withdraw' && !r.transfer).length;
     const newCnt = trecs.filter(r=>r.origin==='new').length;
@@ -920,9 +929,9 @@ function renderAdminDashboard(){
 
   // 전체 합산
   let tot = { start:0, newCnt:0, withdraw:0, active:0, net:0 };
-  const cards = db.branches.map(b=>{
+const cards = db.branches.map(b=>{
     const hc = headcountClean(b.id, semId);
-    const rates = calcRates(activeRecordsOf(b.id, semId), b.id, semId);
+    const rates = calcRates(rateRecordsOf(b.id, semId), b.id, semId);
     tot.start+=hc.start; tot.newCnt+=hc.newCnt; tot.withdraw+=hc.withdraw;
     tot.active+=hc.active; tot.net+=hc.net;
     // 분원 퇴원율 = 퇴원 / (재원+퇴원)
@@ -1074,8 +1083,8 @@ function renderAdminBranchDetail(branchId){
   const semId = state.semId;
   crumbs([{label:'통합 대시보드', go:'admin'},{label:b.name}]);
 
-  const hc = headcountClean(branchId, semId);
-  const brate = calcRates(activeRecordsOf(branchId, semId), branchId, semId);
+ const hc = headcountClean(branchId, semId);
+  const brate = calcRates(rateRecordsOf(branchId, semId), branchId, semId);
   const teachers = teachersOf(branchId, semId);
 
   let html = `
@@ -1188,7 +1197,7 @@ function renderBranchDashboard(){
   crumbs([{label:`${b.name} Dashboard`}]);
 
   const hc = headcountClean(branchId, semId);
-  const rates = calcRates(activeRecordsOf(branchId, semId), branchId, semId);
+  const rates = calcRates(rateRecordsOf(branchId, semId), branchId, semId);
   const teachers = teachersOf(branchId, semId);
 
   let html = `
@@ -1232,9 +1241,9 @@ function renderTeacherDetail(teacher){
     crumbs([{label:`${b.name} Dashboard`, go:'branch'},{label:teacher}]);
   }
 
-  const trecs = activeRecordsOf(branchId, semId).filter(r=>r.teacher===teacher);
+const trecs = activeRecordsOf(branchId, semId).filter(r=>r.teacher===teacher);
   if(trecs.length===0){ el('content').innerHTML = emptyState('해당 담임 데이터가 없습니다',''); return; }
-  const rates = calcRates(trecs, branchId, semId);
+  const rates = calcRates(rateRecordsOfTeacher(branchId, semId, teacher), branchId, semId);
   const classes = classesOf(branchId, semId, teacher);
   const classCount = classes.length;
 
@@ -2964,7 +2973,7 @@ const trecs = activeRecordsOf(branchId, semId).filter(r=>r.teacher===teacher);
     return;
   }
 
-  const rates = calcRates(trecs, branchId, semId);
+const rates = calcRates(rateRecordsOfTeacher(branchId, semId, teacher), branchId, semId);
   const classes = classesOf(branchId, semId, teacher);
 
   let html = `
