@@ -172,8 +172,8 @@ const TABLES = [
     fromRow:r=>({id:r.id,name:r.name}) },
   { key:'students',           table:'students',             toRow:s=>({id:s.id,code:s.code,name:s.name,school:s.school,grade:s.grade}),
     fromRow:r=>({id:r.id,code:r.code,name:r.name,school:r.school,grade:r.grade}) },
-  { key:'semesterRecords',    table:'semester_records',     toRow:r=>({id:r.id,student_id:r.studentId,branch_id:r.branchId,semester_id:r.semesterId,class_name:r.className,class_label:r.classLabel,teacher:r.teacher,note:r.note,target_type:r.targetType,status:r.status,origin:r.origin,enroll_date:r.enrollDate,withdraw_date:r.withdrawDate,transfer:!!r.transfer}),
-    fromRow:r=>({id:r.id,studentId:r.student_id,branchId:r.branch_id,semesterId:r.semester_id,className:r.class_name,classLabel:r.class_label,teacher:r.teacher,note:r.note,targetType:r.target_type,status:r.status,origin:r.origin,enrollDate:r.enroll_date,withdrawDate:r.withdraw_date,transfer:!!r.transfer}) },
+{ key:'semesterRecords',    table:'semester_records',     toRow:r=>({id:r.id,student_id:r.studentId,branch_id:r.branchId,semester_id:r.semesterId,class_name:r.className,class_label:r.classLabel,teacher:r.teacher,note:r.note,target_type:r.targetType,status:r.status,origin:r.origin,enroll_date:r.enrollDate,withdraw_date:r.withdrawDate,transfer:!!r.transfer,kind:r.kind||'regular'}),
+    fromRow:r=>({id:r.id,studentId:r.student_id,branchId:r.branch_id,semesterId:r.semester_id,className:r.class_name,classLabel:r.class_label,teacher:r.teacher,note:r.note,targetType:r.target_type,status:r.status,origin:r.origin,enrollDate:r.enroll_date,withdrawDate:r.withdraw_date,transfer:!!r.transfer,kind:r.kind||'regular'}) },
   { key:'counselingHistories',table:'counseling_histories', toRow:c=>({id:c.id,student_id:c.studentId,branch_id:c.branchId,semester_id:c.semesterId,date:c.date,type:c.type,content:c.content,counselor:c.counselor,batch_id:c.batchId,mistag:!!c.mistag}),
     fromRow:r=>({id:r.id,studentId:r.student_id,branchId:r.branch_id,semesterId:r.semester_id,date:r.date,type:r.type,content:r.content,counselor:r.counselor,batchId:r.batch_id,mistag:!!r.mistag}) },
   { key:'studentMovements',   table:'student_movements',    toRow:m=>({id:m.id,student_id:m.studentId,branch_id:m.branchId,semester_id:m.semesterId,type:m.type,date:m.date,memo:m.memo}),
@@ -184,12 +184,14 @@ const TABLES = [
     fromRow:r=>({id:r.id,branchId:r.branch_id,semesterId:r.semester_id,className:r.class_name,fromTeacher:r.from_teacher,toTeacher:r.to_teacher,date:r.date}) },
     { key:'segments', table:'segments', toRow:s=>({id:s.id,branch_id:s.branchId,semester_id:s.semesterId,stage:s.stage,sec1:s.sec1,sec2:s.sec2,sec3:s.sec3,sec4:s.sec4,updated_at:s.updatedAt}),
     fromRow:r=>({id:r.id,branchId:r.branch_id,semesterId:r.semester_id,stage:r.stage,sec1:r.sec1,sec2:r.sec2,sec3:r.sec3,sec4:r.sec4,updatedAt:r.updated_at}) },
+    { key:'mcExemptions', table:'mc_exemptions', toRow:e=>({id:e.id,student_id:e.studentId,branch_id:e.branchId,semester_id:e.semesterId,stage:e.stage}),
+    fromRow:r=>({id:r.id,studentId:r.student_id,branchId:r.branch_id,semesterId:r.semester_id,stage:r.stage}) },
 ];
 
 function blankDB(){
   return { users:[], branches:[], semesters:[], students:[],
            semesterRecords:[], counselingHistories:[], studentMovements:[],
-           uploadBatches:[], teacherChanges:[],segments:[] };
+           uploadBatches:[], teacherChanges:[], segments:[], mcExemptions:[] };
 }
 let db = null;
 
@@ -307,12 +309,16 @@ function getBranch(id){ return db.branches.find(b=>b.id===id); }
 function getStudent(id){ return db.students.find(s=>s.id===id); }
 function currentSemId(){ return state.semId; }
 
-/* 한 학기 한 분원의 active 학기레코드 */
+/* 한 학기 한 분원의 학기레코드 — 정규반(regular)만. 내신반(exam)은 인원 집계 전부 제외 */
 function recordsOf(branchId, semId){
-  return db.semesterRecords.filter(r=>r.branchId===branchId && r.semesterId===semId);
+  return db.semesterRecords.filter(r=>r.branchId===branchId && r.semesterId===semId && (r.kind||'regular')!=='exam');
 }
 function activeRecordsOf(branchId, semId){
   return recordsOf(branchId,semId).filter(r=>r.status==='active');
+}
+/* 내신반(exam)만 — 표시용. 인원에 더하지 않고 "현재 내신반 N명"만 보여줄 때 사용 */
+function examRecordsOf(branchId, semId){
+  return db.semesterRecords.filter(r=>r.branchId===branchId && r.semesterId===semId && (r.kind||'regular')==='exam' && r.status==='active');
 }
 
 /* 학기 시작 월 (학기명에서 계절 추출) → [1번째달, 2번째달, 3번째달] */
@@ -481,12 +487,45 @@ function dailyClosing(recs, year, month){
    HC1/HC2: 신규·복귀생이면 입학월 상관없이 대상
    MC1/2/3: 입학월 이후의 MC만 대상 (예: 7월 입학 → MC1 제외, MC2·MC3 대상) */
 function isTarget(rec, stage, semId){
+  const sid = semId || (typeof state!=='undefined'?state.semId:null);
+  const isExam = (rec.kind||'regular')==='exam';
+
+  // 내신반: 면제로 넘어온 회차(MC)만 대상. HC와 면제 안 된 MC는 전부 대상 아님.
+  if(isExam){
+    if(stage==='HC1'||stage==='HC2') return false;
+    return isExempt(rec.studentId, rec.branchId, sid, stage);
+  }
+
+  // 정규반: 면제된 MC 회차는 대상 아님 (내신반으로 넘어감)
+  if(stage!=='HC1' && stage!=='HC2' && isExempt(rec.studentId, rec.branchId, sid, stage)){
+    return false;
+  }
+
   if(stage==='HC1'||stage==='HC2') return rec.targetType==='HCMC';
-  const months = semesterMonths(semId || (typeof state!=='undefined'?state.semId:null));
+  const months = semesterMonths(sid);
   const mcMonth = { MC1:months[0], MC2:months[1], MC3:months[2] }[stage];
   const em = enrollMonth(rec);
-  if(em==null) return true;     // 입학일 없으면 학기초부터 → 전부 대상
-  return em <= mcMonth;         // 입학월이 해당 MC 월보다 늦으면 제외
+  if(em==null) return true;
+  return em <= mcMonth;
+}
+/* 이 학생의 이 회차가 정규반에서 면제됐는지 (= 내신반으로 넘어갔는지) */
+function isExempt(studentId, branchId, semId, stage){
+  return (db.mcExemptions||[]).some(e=>
+    e.studentId===studentId && e.branchId===branchId &&
+    e.semesterId===semId && e.stage===stage);
+}
+/* 면제 토글 — 분원관리자만. 있으면 해제, 없으면 추가 */
+function toggleExemption(studentId, branchId, semId, stage){
+  const ex = (db.mcExemptions||[]).find(e=>
+    e.studentId===studentId && e.branchId===branchId &&
+    e.semesterId===semId && e.stage===stage);
+  if(ex){
+    db.mcExemptions = db.mcExemptions.filter(e=>e!==ex);
+  } else {
+    (db.mcExemptions||(db.mcExemptions=[])).push({
+      id:uid('ex'), studentId, branchId, semesterId:semId, stage });
+  }
+  saveDB();
 }
 /* 학생이 특정 단계 완료했는지 */
 function isDone(studentId, branchId, semId, stage){
@@ -1173,6 +1212,34 @@ function renderBranchDashboard(){
   } else {
     html += `<div class="card-grid g3">` + teacherCardsSection(teachers, branchId, 'branch').cards + `</div>`;
   }
+  // 내신반 섹션 — 인원 카운팅엔 안 들어가지만, 상담표 진입용으로 표시
+  const examRecs = examRecordsOf(branchId, semId);
+  if(examRecs.length>0){
+    const examClassMap = new Map();
+    examRecs.forEach(r=>{
+      if(!examClassMap.has(r.className)) examClassMap.set(r.className, []);
+      examClassMap.get(r.className).push(r);
+    });
+    const examCards = [...examClassMap.entries()].map(([className, crecs])=>{
+      const teacher = crecs[0].teacher;
+      const rates = calcRates(crecs, branchId, semId);  // 면제받은 회차만 대상으로 잡힘
+      return `<div class="card clickable" onclick="go('branch/class/${encodeURIComponent(teacher)}/${encodeURIComponent(className)}')">
+        <div class="card-top">
+          <div>
+            <div class="card-name">${esc(className)}</div>
+            <div class="card-sub">${esc(teacher)} 담임 · 학생 ${crecs.length}명 <span style="color:var(--warn)">(인원 미집계)</span></div>
+          </div>
+          <div class="card-rate">
+            <div class="r num" style="color:${rateColor(rates.totalRate)}">${rates.totalTarget?rates.totalRate+'%':'–'}</div>
+            <div class="rl">내신 MC</div>
+          </div>
+        </div>
+        <div class="card-foot"><span class="incomplete-tag">내신반</span>${goArrow}</div>
+      </div>`;
+    }).join('');
+    html += `<div class="sect-head"><h3>내신반</h3><span class="cnt">내신기간 MC 진행 · 정규 인원에는 포함되지 않음</span></div>
+      <div class="card-grid g3">${examCards}</div>`;
+  }
   el('content').innerHTML = html;
 }
 
@@ -1269,9 +1336,11 @@ function renderClassDetail(teacher, className){
   const semId = state.semId;
   const isAdmin = session.role==='admin';
 
-  const recs = activeRecordsOf(branchId, semId)
-    .filter(r=>r.teacher===teacher && r.className===className)
+  const recs = db.semesterRecords
+    .filter(r=>r.branchId===branchId && r.semesterId===semId && r.status==='active'
+      && r.teacher===teacher && r.className===className)
     .sort((a,b)=> getStudent(a.studentId).name.localeCompare(getStudent(b.studentId).name,'ko'));
+  const isExamClass = recs.length>0 && (recs[0].kind||'regular')==='exam';
   if(recs.length===0){ el('content').innerHTML = emptyState('해당 반 데이터가 없습니다',''); return; }
   const rates = calcRates(recs, branchId, semId);
   const classLbl = recs[0].classLabel || classLabel(className) || className;
@@ -1293,8 +1362,17 @@ function renderClassDetail(teacher, className){
     const statusBadge = rec.status==='active'
       ? '<span class="status-badge active">재원</span>'
       : '<span class="status-badge withdraw">퇴원</span>';
+    const isExam = (rec.kind||'regular')==='exam';
     const cells = STAGES.map(stg=>{
+      const isMc = (stg==='MC1'||stg==='MC2'||stg==='MC3');
+      const exempt = isMc && isExempt(rec.studentId, branchId, semId, stg);
+
       if(!isTarget(rec, stg, semId)){
+        // 정규반에서 면제된 MC = 내신반으로 넘김. 분원관리자는 클릭해서 해제 가능.
+        if(exempt && !isExam){
+          const clk = canEditExempt() ? `onclick="onToggleExempt('${rec.studentId}','${stg}')"` : '';
+          return `<td class="cc"><span class="cc-mark exempt ${canEditExempt()?'editable':''}" title="내신반으로 이관됨(면제). ${canEditExempt()?'클릭하면 해제':''}" ${clk}>–</span></td>`;
+        }
         const why = (stg==='HC1'||stg==='HC2') ? '대상 아님(기존생)' : '대상 아님(입학 전 회차)';
         return `<td class="cc"><span class="cc-mark na" title="${why}">–</span></td>`;
       }
@@ -1303,7 +1381,6 @@ function renderClassDetail(teacher, className){
         return `<td class="cc"><span class="cc-mark done" title="상담 내용 보기"
           onclick="openCounseling('${rec.studentId}','${stg}','${esc(stu.name)}')">○</span></td>`;
       }
-      // 오기재 의심: 이 단계에 mistag 상담 기록이 있으면 ⚠️로 표시 (완료 아님)
       const hasMistag = db.counselingHistories.some(c=>
         c.studentId===rec.studentId && c.branchId===branchId &&
         c.semesterId===semId && c.type===stg && c.mistag);
@@ -1311,7 +1388,12 @@ function renderClassDetail(teacher, className){
         return `<td class="cc"><span class="cc-mark mistag" title="대괄호 회차 오기재 의심 — 내용 확인"
           onclick="openCounseling('${rec.studentId}','${stg}','${esc(stu.name)}')">⚠</span></td>`;
       }
-      return `<td class="cc"><span class="cc-mark undone" title="미완료">✕</span></td>`;
+      // 미완료(✕). 정규반 MC면 분원관리자가 클릭해서 면제(–)로 바꿀 수 있음.
+      if(isMc && !isExam && canEditExempt()){
+        return `<td class="cc"><span class="cc-mark undone editable" title="미완료 — 클릭하면 내신반으로 이관(면제)"
+          onclick="onToggleExempt('${rec.studentId}','${stg}')">✕</span></td>`;
+      }
+return `<td class="cc"><span class="cc-mark undone" title="미완료">✕</span></td>`;
     }).join('');
     return `<tr>
       <td><div class="st-name">${esc(stu.name)}${originBadge}</div></td>
@@ -1324,6 +1406,7 @@ function renderClassDetail(teacher, className){
   }).join('');
 
   // 하단 진행률
+
   const footCells = STAGES.map(s=>{
     const st = rates.stages[s];
     return `<div class="tf-cell"><div class="tfl">${s}</div>
@@ -1336,7 +1419,7 @@ function renderClassDetail(teacher, className){
   let html = `
     ${backLink(teacher+' 담임', backTarget)}
     <div class="page-head">
-      <h2>${esc(classLbl)} <span style="font-size:14px;font-weight:500;color:var(--ink-3)">상담표</span></h2>
+      <h2>${esc(classLbl)} <span style="font-size:14px;font-weight:500;color:${isExamClass?'var(--warn)':'var(--ink-3)'}">${isExamClass?'내신반 상담표':'상담표'}</span></h2>
       <div class="sub">${esc(b.name)} · ${esc(teacher)} 담임 · 학생 ${recs.length}명</div>
     </div>
     <div class="table-wrap">
@@ -1356,7 +1439,15 @@ function renderClassDetail(teacher, className){
     </div>`;
   el('content').innerHTML = html;
 }
-
+/* 면제 토글 권한 — 분원관리자만 */
+function canEditExempt(){ return session && session.role==='branch'; }
+/* 셀에서 면제 토글 클릭 */
+function onToggleExempt(studentId, stage){
+  if(!canEditExempt()){ toast('분원 관리자만 변경할 수 있습니다','err'); return; }
+  const branchId = activeBranchId();
+  toggleExemption(studentId, branchId, state.semId, stage);
+  render();
+}
 /* ============================================================================
    14. 상담 내용 팝업
    ============================================================================ */
@@ -2307,6 +2398,13 @@ function readTable(file, cb){
 function isRealClass(raw){
   return /^\s*\[/.test(String(raw||''));
 }
+/* 반 종류 판별: 대괄호로 시작 → 정규반(regular), 대괄호 없이 "내신" 포함 → 내신반(exam), 그 외 → null(제외) */
+function classKind(raw){
+  const s = String(raw||'').trim();
+  if(/^\[/.test(s)) return 'regular';
+  if(s.includes('내신')) return 'exam';
+  return null;
+}
 /* 반 이름에서 레벨 코드만 추출 (괄호 안 내용은 무시).
    "[PA1]SU3/..." → "PA1",  "[A2(1-3)]SM4/..." → "A2" */
 function classLevel(raw){
@@ -2365,7 +2463,6 @@ function importRoster(file, branchId, semId){
   readTable(file, async rows=>{
     if(rows.length<2){ toast('데이터가 없습니다','err'); return; }
     const header = rows[0].map(h=>String(h).trim());
-    // 정상 LMS 전체명단 컬럼명에 맞춘 매핑 (별칭 포함)
     const idx = mapHeader(header, {
       name:['이름','학생명','성명'],
       code:['회원코드','코드','학생코드'],
@@ -2377,24 +2474,22 @@ function importRoster(file, branchId, semId){
       startdate:['반 시작일','반시작일','시작일','등원일','입학일']
     });
     if(idx.name<0 || idx.code<0){ toast('이름·회원코드 열을 찾지 못했습니다','err'); return; }
-    let added=0, updated=0, excluded=0;
+    let added=0, updated=0, excluded=0, examAdded=0;
     rows.slice(1).forEach(r=>{
       const name=String(r[idx.name]||'').trim();
       const code=String(r[idx.code]||'').trim();
       if(!name||!code) return;
-      // 반 이름: 전체 문자열로 반을 구분(같은 레벨이라도 요일/시간/학년/교실 다르면 다른 반).
-      // 화면 표시는 깔끔한 라벨 사용. 대괄호 레벨이 없으면(셔틀 등) 제외.
       const rawClass = idx.cls>=0 ? String(r[idx.cls]||'').trim() : '';
-      if(!isRealClass(rawClass)){ excluded++; return; }
-      const classFull = rawClass;              // 고유 식별자 (전체 이름)
-      const classLbl = classLabel(rawClass);   // 표시용 라벨
+      const kind = classKind(rawClass);     // 'regular' | 'exam' | null
+      if(!kind){ excluded++; return; }       // 대괄호도 '내신'도 아니면 제외
+      const classFull = rawClass;
+      const classLbl = kind==='exam' ? rawClass : classLabel(rawClass);  // 내신반은 이름 그대로 표시
       const note = idx.note>=0 ? String(r[idx.note]||'').trim() : '';
       const origin = /신규/.test(note)?'new' : /복귀/.test(note)?'return' : 'start';
       const targetType = (origin==='new'||origin==='return')?'HCMC':'MC';
       const teacher = String(r[idx.teacher]||'').trim() || '미배정';
       const school = idx.school>=0 ? String(r[idx.school]||'').trim() : '';
       const grade  = idx.grade>=0 ? String(r[idx.grade]||'').trim() : '';
-      // 신규·복귀생이면 반 시작일을 입학일(enrollDate)로 저장 → MC 대상 월 판정에 사용
       let enrollDate = '';
       if(origin==='new' || origin==='return'){
         const rawDate = idx.startdate>=0 ? String(r[idx.startdate]||'').trim() : '';
@@ -2405,14 +2500,18 @@ function importRoster(file, branchId, semId){
       let stu = db.students.find(s=>s.code===code);
       if(!stu){ stu={id:uid('st'),code,name,school,grade}; db.students.push(stu); }
       else { stu.name=name; if(school)stu.school=school; if(grade)stu.grade=grade; }
-      // 학기레코드 upsert
-      let rec = db.semesterRecords.find(x=>x.studentId===stu.id && x.branchId===branchId && x.semesterId===semId);
+      // 학기레코드 upsert — ★ kind까지 일치해야 같은 레코드 (정규/내신 별개 공존)
+      let rec = db.semesterRecords.find(x=>x.studentId===stu.id && x.branchId===branchId && x.semesterId===semId && (x.kind||'regular')===kind);
       if(!rec){
         rec={id:uid('rec'),studentId:stu.id,branchId,semesterId:semId,
-          className:classFull,classLabel:classLbl,teacher,note,targetType,status:'active',origin,enrollDate};
-        db.semesterRecords.push(rec); added++;
-        if(origin==='new') db.studentMovements.push({id:uid('mv'),studentId:stu.id,branchId,semesterId:semId,type:'new',date:enrollDate||today(),memo:'명단 업로드'});
-        if(origin==='return') db.studentMovements.push({id:uid('mv'),studentId:stu.id,branchId,semesterId:semId,type:'return',date:enrollDate||today(),memo:'명단 업로드'});
+          className:classFull,classLabel:classLbl,teacher,note,targetType,status:'active',origin,enrollDate,kind};
+        db.semesterRecords.push(rec);
+        if(kind==='exam'){ examAdded++; }
+        else {
+          added++;
+          if(origin==='new') db.studentMovements.push({id:uid('mv'),studentId:stu.id,branchId,semesterId:semId,type:'new',date:enrollDate||today(),memo:'명단 업로드'});
+          if(origin==='return') db.studentMovements.push({id:uid('mv'),studentId:stu.id,branchId,semesterId:semId,type:'return',date:enrollDate||today(),memo:'명단 업로드'});
+        }
       } else {
         rec.className=classFull; rec.classLabel=classLbl; rec.teacher=teacher;
         if(note) rec.note=note; rec.targetType=targetType;
@@ -2421,13 +2520,13 @@ function importRoster(file, branchId, semId){
         updated++;
       }
     });
-    showSaving(`전체명단 저장 중… (${added+updated}명, 잠시만요)`);
+    showSaving(`전체명단 저장 중… (잠시만요)`);
     const ok = await saveDB();
     hideSaving();
     if(ok){
-      toast(`✅ 저장 완료 · 신규 ${added}, 갱신 ${updated}${excluded?`, 제외 ${excluded}`:''}`,'ok');
+      toast(`✅ 저장 완료 · 정규 신규 ${added}, 갱신 ${updated}${examAdded?`, 내신반 ${examAdded}`:''}${excluded?`, 제외 ${excluded}`:''}`,'ok');
     } else {
-      toast('❌ 저장 실패 — 다시 업로드해 주세요 (데이터가 서버에 저장되지 않았습니다)','err');
+      toast('❌ 저장 실패 — 다시 업로드해 주세요','err');
     }
     render();
   });
@@ -2862,7 +2961,8 @@ function renderTeacherHome(){
     return;
   }
 
-  const trecs = activeRecordsOf(branchId, semId).filter(r=>r.teacher===teacher);
+const trecs = activeRecordsOf(branchId, semId).filter(r=>r.teacher===teacher);
+  const examTrecs = examRecordsOf(branchId, semId).filter(r=>r.teacher===teacher);
   if(trecs.length===0){
     el('content').innerHTML = `
       <div class="page-head"><h2>${esc(teacher)} 선생님</h2>
@@ -2922,7 +3022,28 @@ function renderTeacherHome(){
     </div>`;
   }).join('');
   html += `</div>`;
-  el('content').innerHTML = html;
+
+  // 내신반 (이 선생님이 내신담임인 반)
+  if(examTrecs.length>0){
+    const examClassMap = new Map();
+    examTrecs.forEach(r=>{ if(!examClassMap.has(r.className)) examClassMap.set(r.className,[]); examClassMap.get(r.className).push(r); });
+    const examCards = [...examClassMap.entries()].map(([className, crecs])=>{
+      const rates = calcRates(crecs, branchId, semId);
+      return `<div class="card clickable" onclick="go('branch/class/${encodeURIComponent(teacher)}/${encodeURIComponent(className)}')">
+        <div class="card-top">
+          <div><div class="card-name">${esc(className)}</div>
+            <div class="card-sub">학생 ${crecs.length}명 <span style="color:var(--warn)">(내신반)</span></div></div>
+          <div class="card-rate"><div class="r num" style="color:${rateColor(rates.totalRate)}">${rates.totalTarget?rates.totalRate+'%':'–'}</div>
+            <div class="rl">내신 MC</div></div>
+        </div>
+        <div class="card-foot"><span class="incomplete-tag">내신반</span>${goArrow}</div>
+      </div>`;
+    }).join('');
+    html += `<div class="sect-head"><h3>내신반</h3></div><div class="card-grid g4">${examCards}</div>`;
+    el('content').innerHTML = html;
+  } else {
+    el('content').innerHTML = html;
+  }
 }
 /* ============================================================================
    17-4. 분원 — 세그먼트 공지 입력 (회차별 4섹션)
