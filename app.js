@@ -323,19 +323,32 @@ function semesterMonths(semId){
   if(name.includes('가을')) return [9,10,11];
   return [1,2,3];
 }
-/* 상담 회차(MC1~3)와 실제 상담 날짜를 비교해 어느 학기 상담인지 판정.
-   - HC1/HC2: 월 제한 없음 → 'ok'
-   - 상담월 >= 회차정상월(정상이거나 늦게함)        → 'ok'      (현재학기 인정)
-   - 정상월이 상담월보다 2달 이상 뒤(너무 이름)     → 'prev'    (이전학기 → 제외)
-   - 정상월이 상담월보다 딱 1달 뒤(애매하게 이름)   → 'mistag'  (오기재 의심 → 제외+메모) */
-function stageTimingCheck(type, dateStr, semId){
-  if(type==='HC1' || type==='HC2') return 'ok';
+
+/* 상담 회차와 실제 상담 날짜를 비교해 어느 학기 상담인지 판정.
+   - HC1/HC2: 입학월 기준. (입학월 전달) ~ (학기 마지막 달) 사이면 인정.
+              입학일 없으면 학기 첫 달 신규로 보고 첫 달의 전달부터 인정.
+              그보다 전이면 이전 학기 상담 → 'prev'.
+   - MC1~3: 기존대로 회차-월 비교. */
+function stageTimingCheck(type, dateStr, semId, enrollDate){
   const months = semesterMonths(semId);            // 예: [6,7,8]
-  const stageIdx = { MC1:0, MC2:1, MC3:2 }[type];  // 회차의 정상 '몇 번째 달'
-  if(stageIdx==null) return 'ok';
   const m = String(dateStr||'').match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
   if(!m) return 'ok';                              // 날짜 파싱 불가 → 인정
   const cMonth = parseInt(m[2],10);
+
+  if(type==='HC1' || type==='HC2'){
+    // 입학월: 있으면 그 월, 없으면 학기 첫 달(시작신규생)
+    const em = String(enrollDate||'').match(/\d{4}-(\d{1,2})/);
+    const enrollM = em ? parseInt(em[1],10) : months[0];
+    // 인정 시작월 = 입학월의 전달 (단, 학기 첫 달보다 앞서면 학기 첫 달의 전달로 맞춤)
+    const baseM = Math.max(enrollM, months[0]);    // 입학월이 학기 첫 달보다 이르면 첫 달 기준
+    const prevMonth = baseM===1 ? 12 : baseM-1;    // 그 달의 전달
+    // 인정 범위: 전달 + 학기 3개월
+    const okMonths = [prevMonth, ...months];
+    return okMonths.includes(cMonth) ? 'ok' : 'prev';
+  }
+
+  const stageIdx = { MC1:0, MC2:1, MC3:2 }[type];  // 회차의 정상 '몇 번째 달'
+  if(stageIdx==null) return 'ok';
   const slot = months.indexOf(cMonth);             // 상담월이 이 학기의 몇 번째 달인지
   if(slot===-1) return 'prev';                     // 학기 3개월에 없음 → 이전학기
   const diff = stageIdx - slot;                    // 회차정상위치 - 실제상담위치
@@ -2445,7 +2458,8 @@ function importHistory(file, branchId, semId){
       if(uniqTags.length===0){ skip++; return; } // 단계 태그 없는 상담은 완료율과 무관 → 미반영
       uniqTags.forEach(type=>{
         // ★ 회차-월 판정: 이전학기 상담이면 현재 학기 집계에서 제외
-        const timing = stageTimingCheck(type, date, semId);
+        const recForStu = db.semesterRecords.find(x=>x.studentId===stu.id && x.branchId===branchId && x.semesterId===semId);
+        const timing = stageTimingCheck(type, date, semId, recForStu && recForStu.enrollDate);
         if(timing==='prev'){ prevSem++; return; }  // 이전 학기 상담 → 현재 학기에 미반영
         const isMistag = (timing==='mistag');      // 오기재 의심 → 저장하되 완료 집계 제외
 
