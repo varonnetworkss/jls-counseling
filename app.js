@@ -182,12 +182,14 @@ const TABLES = [
     fromRow:r=>({id:r.id,branchId:r.branch_id,semesterId:r.semester_id,kind:r.kind,fileName:r.file_name,uploadedAt:r.uploaded_at,added:r.added,dup:r.dup,skip:r.skip}) },
   { key:'teacherChanges',     table:'teacher_changes',      toRow:c=>({id:c.id,branch_id:c.branchId,semester_id:c.semesterId,class_name:c.className,from_teacher:c.fromTeacher,to_teacher:c.toTeacher,date:c.date}),
     fromRow:r=>({id:r.id,branchId:r.branch_id,semesterId:r.semester_id,className:r.class_name,fromTeacher:r.from_teacher,toTeacher:r.to_teacher,date:r.date}) },
+    { key:'segments', table:'segments', toRow:s=>({id:s.id,branch_id:s.branchId,semester_id:s.semesterId,stage:s.stage,sec1:s.sec1,sec2:s.sec2,sec3:s.sec3,sec4:s.sec4,updated_at:s.updatedAt}),
+    fromRow:r=>({id:r.id,branchId:r.branch_id,semesterId:r.semester_id,stage:r.stage,sec1:r.sec1,sec2:r.sec2,sec3:r.sec3,sec4:r.sec4,updatedAt:r.updated_at}) },
 ];
 
 function blankDB(){
   return { users:[], branches:[], semesters:[], students:[],
            semesterRecords:[], counselingHistories:[], studentMovements:[],
-           uploadBatches:[], teacherChanges:[] };
+           uploadBatches:[], teacherChanges:[],segments:[] };
 }
 let db = null;
 
@@ -595,7 +597,7 @@ function classesOf(branchId, semId, teacher){
 /* ============================================================================
    4. 앱 상태 & 라우터
    ============================================================================ */
-const state = { semId:null, route:null, branchSort:'active', teacherSort:'rate_desc', classSort:'rate_desc', allTeacherSort:'rate_desc', rosterTab:'new', closingTab:'teacher', closingMonth:null, rosterTeacher:'', rosterQuery:'' };
+const state = { semId:null, route:null, branchSort:'active', teacherSort:'rate_desc', classSort:'rate_desc', allTeacherSort:'rate_desc', rosterTab:'new', closingTab:'teacher', closingMonth:null, rosterTeacher:'', rosterQuery:'', segStage:'MC1' };
 
 const el = id => document.getElementById(id);
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -714,6 +716,7 @@ function buildShell(){
     roster:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/></svg>',
     closing:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><rect x="7" y="10" width="3" height="7"/><rect x="13" y="6" width="3" height="11"/></svg>',
     teach:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>',
+    seg:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
   };
   if(isAdmin){
     nav.innerHTML = `
@@ -734,6 +737,7 @@ function buildShell(){
       <div class="sb-item" data-nav="closing">${I.closing}<span>인원마감표</span></div>
       <div class="sb-item" data-nav="students">${I.stu}<span>학생관리</span></div>
       <div class="sb-item" data-nav="teachers">${I.teach}<span>선생님 계정</span></div>
+      <div class="sb-item" data-nav="segments-edit">${I.seg}<span>세그먼트 공지</span></div>
       <div class="sb-item" data-nav="data">${I.data}<span>데이터관리</span></div>`;
   }
   nav.querySelectorAll('[data-nav]').forEach(it=>{
@@ -770,7 +774,7 @@ function render(){
   // branch 대시보드/데이터관리는 불가. branch는 admin/accounts 불가.
   if(session.role==='admin'){
     if(root==='branch' && parts[1]!=='teacher' && parts[1]!=='class'){ go('admin'); return; }
-    if(root==='data'||root==='students'){ go('admin'); return; }
+    if(root==='data'||root==='students'||root==='segments-edit'||root==='teachers'){ go('admin'); return; }
   }
   // 선생님: 자기 반 관련 화면만 (myclasses / branch teacher·class 상세)
   if(session.role==='teacher'){
@@ -806,6 +810,7 @@ function render(){
     } else { setActiveNav('closing'); renderClosing(session.branchId); }
   }
   else if(root==='teachers'){ setActiveNav('teachers'); renderTeacherAccounts(); }
+  else if(root==='segments-edit'){ setActiveNav('segments-edit'); renderSegmentEdit(); }
   else if(root==='myclasses'){ setActiveNav('myclasses'); renderTeacherHome(); }
   else { go(session.role==='admin'?'admin':'branch'); return; }
   el('content').scrollIntoView({block:'start'});
@@ -2918,6 +2923,69 @@ function renderTeacherHome(){
   }).join('');
   html += `</div>`;
   el('content').innerHTML = html;
+}
+/* ============================================================================
+   17-4. 분원 — 세그먼트 공지 입력 (회차별 4섹션)
+   ============================================================================ */
+const SEG_STAGES = ['MC1','MC2','MC3'];
+const SEG_SECTIONS = [
+  { key:'sec1', label:'중요상담', ph:'그 회차 상담의 핵심 메시지 (예: 몰입 상담 강조, 톤 지침 등)' },
+  { key:'sec2', label:'레벨 학습 목표 및 학습내용 안내', ph:'CHESS/ACE 레벨별 학습목표·교재·시험 안내' },
+  { key:'sec3', label:'학부모 의견 & 학생 적응 상황', ph:'담임이 학부모와 나눌 대화 포인트' },
+  { key:'sec4', label:'공지사항', ph:'평가일, 방학, 행정 공지 등' },
+];
+
+function renderSegmentEdit(){
+  const branchId = session.branchId;
+  const b = getBranch(branchId);
+  const semId = state.semId;
+  const stage = state.segStage || 'MC1';
+  crumbs([{label:'세그먼트 공지'}]);
+
+  // 현재 분원·학기·회차의 세그먼트 찾기 (없으면 새로 만들 준비)
+  const seg = (db.segments||[]).find(s=>s.branchId===branchId && s.semesterId===semId && s.stage===stage);
+
+  const stageBtn = (st)=>`<button class="sb-btn ${stage===st?'on':''}" onclick="setSegStage('${st}')">${st}</button>`;
+
+  el('content').innerHTML = `
+    <div class="page-head">
+      <h2>세그먼트 공지</h2>
+      <div class="sub">${esc(b.name)} · ${esc(db.semesters.find(s=>s.id===semId).name)} · 본사에서 받은 세그먼트를 회차별로 입력하면, 나중에 선생님이 학생 상담 시 참고하고 학생별 대본에 녹아듭니다.</div>
+    </div>
+    <div class="sort-bar" style="margin-bottom:16px">
+      ${SEG_STAGES.map(stageBtn).join('')}
+    </div>
+    <div class="panel">
+      <h3 style="font-size:14.5px;font-weight:700;margin-bottom:4px">${esc(db.semesters.find(s=>s.id===semId).name)} ${stage} Segment</h3>
+      <div class="pd" style="margin-bottom:14px">${seg&&seg.updatedAt?`마지막 저장: ${esc(seg.updatedAt)}`:'아직 저장된 내용이 없습니다.'}</div>
+      ${SEG_SECTIONS.map((sec,i)=>`
+        <div class="field full" style="margin-bottom:14px">
+          <label style="font-weight:700">${i+1}. ${esc(sec.label)}</label>
+          <textarea id="seg_${sec.key}" rows="5" placeholder="${esc(sec.ph)}"
+            style="width:100%;padding:10px 11px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface-2);font-family:inherit;font-size:13.5px;line-height:1.6;resize:vertical">${esc(seg?seg[sec.key]||'':'')}</textarea>
+        </div>`).join('')}
+      <button class="btn primary" style="width:100%" onclick="saveSegment()">${stage} 세그먼트 저장</button>
+    </div>`;
+}
+function setSegStage(st){ state.segStage = st; render(); }
+function saveSegment(){
+  const branchId = session.branchId, semId = state.semId;
+  const stage = state.segStage || 'MC1';
+  let seg = (db.segments||[]).find(s=>s.branchId===branchId && s.semesterId===semId && s.stage===stage);
+  const vals = {};
+  SEG_SECTIONS.forEach(sec=>{ vals[sec.key] = el('seg_'+sec.key).value.trim(); });
+  if(seg){
+    Object.assign(seg, vals); seg.updatedAt = nowStamp();
+  } else {
+    seg = { id:uid('seg'), branchId, semesterId:semId, stage, ...vals, updatedAt:nowStamp() };
+    (db.segments||(db.segments=[])).push(seg);
+  }
+  showSaving('세그먼트 저장 중…');
+  saveDB().then(ok=>{
+    hideSaving();
+    toast(ok?`${stage} 세그먼트 저장 완료`:'저장 실패, 다시 시도하세요', ok?'ok':'err');
+    render();
+  });
 }
 /* ============================================================================
    18. 모달 유틸
