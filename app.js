@@ -448,13 +448,13 @@ function monthlyClosing(recs, months, activeMonths, splits){
       wdThis  = recs.filter(r=> withdrawMonth(r)===m && !r.transfer).length;
       trThis  = recs.filter(r=> withdrawMonth(r)===m && r.transfer).length;
     }
-    const baseNew = monthStart + newThis;
+const baseNew = monthStart + newThis;
     const rate = baseNew>0 ? (wdThis/baseNew*100) : 0;
     if(active){
-      cells.push({ month:m, baseNew, withdraw:wdThis, transfer:trThis, rate, blank:false });
+      cells.push({ month:m, monthStart, newThis, baseNew, withdraw:wdThis, transfer:trThis, rate, blank:false });
       if(baseNew>0) rates.push(rate);
     } else {
-      cells.push({ month:m, baseNew:0, withdraw:0, transfer:0, rate:0, blank:true });
+      cells.push({ month:m, monthStart:0, newThis:0, baseNew:0, withdraw:0, transfer:0, rate:0, blank:true });
     }
     carry = baseNew - wdThis - trThis;
   });
@@ -1696,22 +1696,22 @@ function closingTable(groups, months, firstColLabel, totalRecs){
     const r = monthlyClosing(g.recs, months, g.activeMonths, g.splits);
     const splitMonths = new Set((g.splits||[]).map(s=>s.month));
     const monthCells = r.cells.map(c=>{
-      if(c.blank) return `<td class="num cell-na">-</td><td class="num cell-na">-</td><td class="num cell-na">-</td>`;
+      if(c.blank) return `<td class="num cc cell-na">-</td><td class="num cc cell-na">-</td><td class="num cc cell-na">-</td><td class="num cc cell-na">-</td><td class="num cc cell-na">-</td>`;
       const cls = splitMonths.has(c.month) ? ' cell-split' : '';
-      const wdCell = c.withdraw
-        ? `${c.withdraw}${c.transfer?`<span style="color:var(--warn);font-size:11px"> +${c.transfer}전출</span>`:''}`
-        : (c.transfer?`<span style="color:var(--warn);font-size:11px">${c.transfer}전출</span>`:'-');
-      return `<td class="num${cls}">${c.baseNew||'-'}</td>
-      <td class="num${cls}">${wdCell}</td>
-      <td class="num${cls}"><span style="color:${c.rate>=10?'var(--neg)':c.rate>=5?'var(--warn)':'var(--ink-2)'}">${c.baseNew?c.rate.toFixed(1)+'%':'-'}</span></td>`;
+      const trCell = c.transfer ? `<span style="color:var(--warn)">${c.transfer}</span>` : '-';
+      return `<td class="num cc${cls}">${c.monthStart||'-'}</td>
+      <td class="num cc${cls}">${c.newThis||'-'}</td>
+      <td class="num cc${cls}">${c.withdraw||'-'}</td>
+      <td class="num cc${cls}">${trCell}</td>
+      <td class="num cc${cls}"><span style="color:${c.rate>=10?'var(--neg)':c.rate>=5?'var(--warn)':'var(--ink-2)'}">${c.baseNew?c.rate.toFixed(1)+'%':'-'}</span></td>`;
     }).join('');
-    const nameCell = `<span class="nm">${esc(g.name)}</span>`;
     return `<tr>
       <td class="cc">${i+1}</td>
-      <td>${nameCell}</td>
+      <td class="cc"><span class="nm">${esc(g.name)}</span></td>
       ${monthCells}
-      <td class="num" style="font-weight:700">${r.totWithdraw||'-'}${r.totTransfer?`<span style="color:var(--warn);font-weight:500;font-size:11px"> +${r.totTransfer}</span>`:''}</td>
-      <td class="num"><span style="font-weight:700;color:${r.avgRate>=10?'var(--neg)':r.avgRate>=5?'var(--warn)':'var(--brand)'}">${r.avgRate?r.avgRate.toFixed(1)+'%':'-'}</span></td>
+      <td class="num cc" style="font-weight:700">${r.totWithdraw||'-'}</td>
+      <td class="num cc" style="font-weight:700;color:${r.totTransfer?'var(--warn)':'inherit'}">${r.totTransfer||'-'}</td>
+      <td class="num cc"><span style="font-weight:700;color:${r.avgRate>=10?'var(--neg)':r.avgRate>=5?'var(--warn)':'var(--brand)'}">${r.avgRate?r.avgRate.toFixed(1)+'%':'-'}</span></td>
     </tr>`;
   }).join('');
 
@@ -1719,28 +1719,31 @@ function closingTable(groups, months, firstColLabel, totalRecs){
   const baseForTotal = totalRecs || groups.reduce((acc,g)=>acc.concat(g.recs),[]);
   const totR = monthlyClosing(baseForTotal, months);
   const totalCells = totR.cells.map(c=>{
-    return `<td class="num">${c.baseNew||'-'}</td><td class="num">${c.withdraw||'-'}</td>
-      <td class="num">${c.baseNew?c.rate.toFixed(1)+'%':'-'}</td>`;
+    const trCell = c.transfer ? `<span style="color:var(--warn)">${c.transfer}</span>` : '-';
+    return `<td class="num cc">${c.monthStart||'-'}</td><td class="num cc">${c.newThis||'-'}</td>
+      <td class="num cc">${c.withdraw||'-'}</td><td class="num cc">${trCell}</td>
+      <td class="num cc">${c.baseNew?c.rate.toFixed(1)+'%':'-'}</td>`;
   }).join('');
   const totAvg = totR.avgRate;
   const totWithdrawSum = totR.totWithdraw;
   const totTransferSum = totR.totTransfer;
 
-  const monthHeads = monthNames.map(mn=>`<th class="cc" colspan="3">${mn}</th>`).join('');
-  const subHeads = months.map(()=>`<th class="cc">월초+신규</th><th class="cc">퇴원</th><th class="cc">퇴원율</th>`).join('');
+  const monthHeads = monthNames.map(mn=>`<th class="cc" colspan="5">${mn}</th>`).join('');
+  const subHeads = months.map(()=>`<th class="cc">월초</th><th class="cc">신규</th><th class="cc">퇴원</th><th class="cc">전출</th><th class="cc">퇴원율</th>`).join('');
 
   return `<div class="table-wrap"><div class="table-scroll">
     <table class="rank-table closing-table">
       <thead>
-        <tr><th class="cc" rowspan="2">#</th><th rowspan="2">${firstColLabel}</th>${monthHeads}
-          <th class="cc" colspan="2">${db.semesters.find(s=>s.id===state.semId)?.name.match(/\d+학기/)?'학기':'학기'} 계</th></tr>
-        <tr>${subHeads}<th class="cc">총퇴원</th><th class="cc">평균퇴원율</th></tr>
+        <tr><th class="cc" rowspan="2">#</th><th class="cc" rowspan="2">${firstColLabel}</th>${monthHeads}
+          <th class="cc" colspan="3">학기 계</th></tr>
+        <tr>${subHeads}<th class="cc">총퇴원</th><th class="cc">총전출</th><th class="cc">평균퇴원율</th></tr>
       </thead>
       <tbody>${bodyRows}</tbody>
       <tfoot>
-<tr class="closing-total"><td class="cc"></td><td class="nm">합계</td>${totalCells}
-          <td class="num" style="font-weight:800">${totWithdrawSum}${totTransferSum?`<span style="color:var(--warn);font-weight:600;font-size:11px"> +${totTransferSum}전출</span>`:''}</td>
-          <td class="num" style="font-weight:800">${totAvg.toFixed(1)}%</td></tr>
+        <tr class="closing-total"><td class="cc"></td><td class="cc nm">합계</td>${totalCells}
+          <td class="num cc" style="font-weight:800">${totWithdrawSum}</td>
+          <td class="num cc" style="font-weight:800;color:${totTransferSum?'var(--warn)':'inherit'}">${totTransferSum}</td>
+          <td class="num cc" style="font-weight:800">${totAvg.toFixed(1)}%</td></tr>
       </tfoot>
     </table>
   </div></div>`;
@@ -1874,15 +1877,16 @@ function renderClosingDaily(branchId, headHtml){
     const wdCell = r.wdToday
       ? `<span style="color:var(--neg)">${r.wdToday}</span>${r.trToday?`<span style="color:var(--warn);font-size:11px"> +${r.trToday}전출</span>`:''}`
       : (r.trToday?`<span style="color:var(--warn);font-size:11px">${r.trToday}전출</span>`:'-');
-    return `<tr>
+return `<tr>
       <td class="cc">${month}/${r.d}</td>
       <td class="cc" style="color:var(--ink-3)">${wk}</td>
-      <td class="num">${r.newToday||'-'}</td>
-      <td class="num">${r.newAcc||'-'}</td>
-      <td class="num" style="font-weight:700">${r.base}</td>
-      <td class="num">${wdCell}</td>
-      <td class="num">${r.wdAcc||'-'}</td>
-      <td class="num">${r.wdToday?`<span style="color:${r.rate>=2?'var(--neg)':'var(--ink-2)'}">${r.rate.toFixed(2)}%</span>`:'-'}</td>
+      <td class="num cc">${r.newToday||'-'}</td>
+      <td class="num cc">${r.newAcc||'-'}</td>
+      <td class="num cc" style="font-weight:700">${r.base}</td>
+      <td class="num cc">${r.wdToday?`<span style="color:var(--neg)">${r.wdToday}</span>`:'-'}</td>
+      <td class="num cc">${r.trToday?`<span style="color:var(--warn)">${r.trToday}</span>`:'-'}</td>
+      <td class="num cc">${r.wdAcc||'-'}</td>
+      <td class="num cc">${r.wdToday?`<span style="color:${r.rate>=2?'var(--neg)':'var(--ink-2)'}">${r.rate.toFixed(2)}%</span>`:'-'}</td>
     </tr>`;
   }).join('');
 
@@ -1905,7 +1909,7 @@ function renderClosingDaily(branchId, headHtml){
         <thead><tr>
           <th class="cc">날짜</th><th class="cc">요일</th>
           <th class="cc">신입</th><th class="cc">신입누계</th><th class="cc">기준학생수</th>
-          <th class="cc">퇴원</th><th class="cc">퇴원누계</th><th class="cc">퇴원율</th>
+          <th class="cc">퇴원</th><th class="cc">전출</th><th class="cc">퇴원누계</th><th class="cc">퇴원율</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>

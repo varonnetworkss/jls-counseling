@@ -592,3 +592,4 @@ table.rank-table tbody tr:last-child td{border-bottom:none}
   font-weight:700;font-size:13px;border-radius:7px;color:var(--ink-3);cursor:pointer}
 .ex-seg button:hover{border-color:var(--brand)}
 .ex-seg button.on{background:var(--brand);color:#fff;border-color:var(--brand)}
+.closing-table th, .closing-table td{ text-align:center; }
