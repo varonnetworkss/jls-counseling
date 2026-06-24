@@ -484,11 +484,12 @@ function dailyClosing(recs, year, month){
   for(let d=1; d<=days; d++){
     const newToday = recs.filter(r=> monthOfDate(r.enrollDate)===month && dayOfDate(r.enrollDate)===d).length;
     const wdToday  = recs.filter(r=> monthOfDate(r.withdrawDate)===month && dayOfDate(r.withdrawDate)===d && !r.transfer).length;
+    const trToday  = recs.filter(r=> monthOfDate(r.withdrawDate)===month && dayOfDate(r.withdrawDate)===d && r.transfer).length;
     running += newToday;
     const base = running;
-    running -= wdToday;
+    running -= (wdToday + trToday);
     newAcc += newToday; wdAcc += wdToday;
-    rows.push({ d, newToday, newAcc, base, wdToday, wdAcc, rate: base>0?(wdToday/base*100):0 });
+    rows.push({ d, newToday, newAcc, base, wdToday, trToday, wdAcc, rate: base>0?(wdToday/base*100):0 });
   }
   return { startCount, rows, endCount:running };
 }
@@ -928,12 +929,12 @@ function renderAdminDashboard(){
   crumbs([{label:'통합 대시보드'}]);
 
   // 전체 합산
-  let tot = { start:0, newCnt:0, withdraw:0, active:0, net:0 };
+  let tot = { start:0, newCnt:0, withdraw:0, transfer:0, active:0, net:0 };
 const cards = db.branches.map(b=>{
     const hc = headcountClean(b.id, semId);
     const rates = calcRates(rateRecordsOf(b.id, semId), b.id, semId);
-    tot.start+=hc.start; tot.newCnt+=hc.newCnt; tot.withdraw+=hc.withdraw;
-    tot.active+=hc.active; tot.net+=hc.net;
+tot.start+=hc.start; tot.newCnt+=hc.newCnt; tot.withdraw+=hc.withdraw;
+    tot.transfer+=hc.transfer; tot.active+=hc.active; tot.net+=hc.net;
     // 분원 퇴원율 = 퇴원 / (재원+퇴원)
     const wbase = hc.active + hc.withdraw;
     const withdrawRate = wbase>0 ? Math.round(hc.withdraw/wbase*100) : 0;
@@ -947,10 +948,11 @@ const cards = db.branches.map(b=>{
       <h2>통합 대시보드</h2>
       <div class="sub">6개 분원 통합 현황 · ${esc(db.semesters.find(s=>s.id===semId).name)}</div>
     </div>
-    <div class="kpi-row c5">
+    <div class="kpi-row c6">
       ${kpiCard('전체 학기초 인원', tot.start, {unit:'명'})}
       ${kpiCard('전체 신규생', tot.newCnt, {unit:'명'})}
       ${kpiCard('전체 퇴원생', tot.withdraw, {unit:'명'})}
+      ${kpiCard('전체 전출', tot.transfer, {unit:'명'})}
       ${kpiCard('전체 퇴원율', totWithdrawRate, {unit:'%'})}
       ${kpiCard('현 재원생', tot.active, {unit:'명', accent:true})}
     </div>
@@ -1093,10 +1095,11 @@ function renderAdminBranchDetail(branchId){
       <h2>${esc(b.name)}</h2>
       <div class="sub">분원 상세 현황 · ${esc(db.semesters.find(s=>s.id===semId).name)}</div>
     </div>
-    <div class="kpi-row c4">
+    <div class="kpi-row c5">
       ${kpiCard('학기초 인원', hc.start, {unit:'명'})}
       ${kpiCard('신규생', hc.newCnt, {unit:'명'})}
       ${kpiCard('퇴원생', hc.withdraw, {unit:'명'})}
+      ${kpiCard('전출', hc.transfer, {unit:'명'})}
       ${kpiCard('현 재원생', hc.active, {unit:'명', accent:true})}
     </div>
     <div class="sect-head"><h3>전체 상담 진행률</h3></div>
@@ -1205,13 +1208,15 @@ function renderBranchDashboard(){
       <h2>${esc(b.name)} Dashboard</h2>
       <div class="sub">${esc(db.semesters.find(s=>s.id===semId).name)} 운영 현황</div>
     </div>
-    <div class="kpi-row c4">
+<div class="kpi-row c5">
       ${kpiCard('학기초 인원', hc.start, {unit:'명'})}
       ${kpiCard('신규생', hc.newCnt, {unit:'명'})}
       ${kpiCard('퇴원생', hc.withdraw, {unit:'명'})}
+      ${kpiCard('전출', hc.transfer, {unit:'명'})}
       ${kpiCard('현 재원생', hc.active, {unit:'명', accent:true})}
     </div>
-    <div class="sect-head"><h3>전체 상담률</h3><span class="cnt">단계별 진행 현황</span></div>
+    <div class="sect-head"><h3>전체 상담률</h3>
+    <span class="cnt">단계별 진행 현황</span></div>
     ${ratePanel(rates)}
     <div class="sect-head"><h3>담임별 현황</h3>
       ${teachers.length?teacherCardsSection(teachers, branchId, 'branch').sortBar:''}</div>`;
@@ -1339,12 +1344,19 @@ function renderClassDetail(teacher, className){
   const isAdmin = session.role==='admin';
 
   const recs = db.semesterRecords
-    .filter(r=>r.branchId===branchId && r.semesterId===semId && r.status==='active'
+    .filter(r=>r.branchId===branchId && r.semesterId===semId
       && r.teacher===teacher && r.className===className)
-    .sort((a,b)=> getStudent(a.studentId).name.localeCompare(getStudent(b.studentId).name,'ko'));
+    .sort((a,b)=>{
+      // 재원생 먼저, 그다음 퇴원생. 같은 상태면 이름순.
+      const aw = a.status==='withdraw' ? 1 : 0;
+      const bw = b.status==='withdraw' ? 1 : 0;
+      if(aw!==bw) return aw-bw;
+      return getStudent(a.studentId).name.localeCompare(getStudent(b.studentId).name,'ko');
+    });
+const activeRecs = recs.filter(r=>r.status==='active');
   const isExamClass = recs.length>0 && (recs[0].kind||'regular')==='exam';
   if(recs.length===0){ el('content').innerHTML = emptyState('해당 반 데이터가 없습니다',''); return; }
-  const rates = calcRates(recs, branchId, semId);
+  const rates = calcRates(activeRecs, branchId, semId);
   const classLbl = recs[0].classLabel || classLabel(className) || className;
 
   const tBack = isAdmin ? 'admin/branch/'+branchId : 'branch';
@@ -1365,7 +1377,16 @@ function renderClassDetail(teacher, className){
       ? '<span class="status-badge active">재원</span>'
       : '<span class="status-badge withdraw">퇴원</span>';
     const isExam = (rec.kind||'regular')==='exam';
+    const isWithdrawn = rec.status==='withdraw';
     const cells = STAGES.map(stg=>{
+      // 퇴원생: 이미 완료한 상담(○)만 보이고, 나머지는 전부 막음(–)
+      if(isWithdrawn){
+        if(isDone(rec.studentId, branchId, semId, stg)){
+          return `<td class="cc"><span class="cc-mark done" title="상담 내용 보기"
+            onclick="openCounseling('${rec.studentId}','${stg}','${esc(stu.name)}')">○</span></td>`;
+        }
+        return `<td class="cc"><span class="cc-mark na" title="퇴원 — 이후 상담 없음">–</span></td>`;
+      }
       const isMc = (stg==='MC1'||stg==='MC2'||stg==='MC3');
       const exempt = isMc && isExempt(rec.studentId, branchId, semId, stg);
 
@@ -1677,8 +1698,11 @@ function closingTable(groups, months, firstColLabel, totalRecs){
     const monthCells = r.cells.map(c=>{
       if(c.blank) return `<td class="num cell-na">-</td><td class="num cell-na">-</td><td class="num cell-na">-</td>`;
       const cls = splitMonths.has(c.month) ? ' cell-split' : '';
+      const wdCell = c.withdraw
+        ? `${c.withdraw}${c.transfer?`<span style="color:var(--warn);font-size:11px"> +${c.transfer}전출</span>`:''}`
+        : (c.transfer?`<span style="color:var(--warn);font-size:11px">${c.transfer}전출</span>`:'-');
       return `<td class="num${cls}">${c.baseNew||'-'}</td>
-      <td class="num${cls}">${c.withdraw||'-'}</td>
+      <td class="num${cls}">${wdCell}</td>
       <td class="num${cls}"><span style="color:${c.rate>=10?'var(--neg)':c.rate>=5?'var(--warn)':'var(--ink-2)'}">${c.baseNew?c.rate.toFixed(1)+'%':'-'}</span></td>`;
     }).join('');
     const nameCell = `<span class="nm">${esc(g.name)}</span>`;
@@ -1686,7 +1710,7 @@ function closingTable(groups, months, firstColLabel, totalRecs){
       <td class="cc">${i+1}</td>
       <td>${nameCell}</td>
       ${monthCells}
-      <td class="num" style="font-weight:700">${r.totWithdraw||'-'}</td>
+      <td class="num" style="font-weight:700">${r.totWithdraw||'-'}${r.totTransfer?`<span style="color:var(--warn);font-weight:500;font-size:11px"> +${r.totTransfer}</span>`:''}</td>
       <td class="num"><span style="font-weight:700;color:${r.avgRate>=10?'var(--neg)':r.avgRate>=5?'var(--warn)':'var(--brand)'}">${r.avgRate?r.avgRate.toFixed(1)+'%':'-'}</span></td>
     </tr>`;
   }).join('');
@@ -1700,6 +1724,7 @@ function closingTable(groups, months, firstColLabel, totalRecs){
   }).join('');
   const totAvg = totR.avgRate;
   const totWithdrawSum = totR.totWithdraw;
+  const totTransferSum = totR.totTransfer;
 
   const monthHeads = monthNames.map(mn=>`<th class="cc" colspan="3">${mn}</th>`).join('');
   const subHeads = months.map(()=>`<th class="cc">월초+신규</th><th class="cc">퇴원</th><th class="cc">퇴원율</th>`).join('');
@@ -1713,8 +1738,8 @@ function closingTable(groups, months, firstColLabel, totalRecs){
       </thead>
       <tbody>${bodyRows}</tbody>
       <tfoot>
-        <tr class="closing-total"><td class="cc"></td><td class="nm">합계</td>${totalCells}
-          <td class="num" style="font-weight:800">${totWithdrawSum}</td>
+<tr class="closing-total"><td class="cc"></td><td class="nm">합계</td>${totalCells}
+          <td class="num" style="font-weight:800">${totWithdrawSum}${totTransferSum?`<span style="color:var(--warn);font-weight:600;font-size:11px"> +${totTransferSum}전출</span>`:''}</td>
           <td class="num" style="font-weight:800">${totAvg.toFixed(1)}%</td></tr>
       </tfoot>
     </table>
@@ -1844,30 +1869,35 @@ function renderClosingDaily(branchId, headHtml){
 
   const monthBtns = months.map(mo=>`<button class="sb-btn ${month===mo?'on':''}" onclick="setClosingMonth(${mo})">${mo}월</button>`).join('');
 
-  const rows = data.rows.map(r=>{
+ const rows = data.rows.map(r=>{
     const wk = ['일','월','화','수','목','금','토'][new Date(year, month-1, r.d).getDay()];
+    const wdCell = r.wdToday
+      ? `<span style="color:var(--neg)">${r.wdToday}</span>${r.trToday?`<span style="color:var(--warn);font-size:11px"> +${r.trToday}전출</span>`:''}`
+      : (r.trToday?`<span style="color:var(--warn);font-size:11px">${r.trToday}전출</span>`:'-');
     return `<tr>
       <td class="cc">${month}/${r.d}</td>
       <td class="cc" style="color:var(--ink-3)">${wk}</td>
       <td class="num">${r.newToday||'-'}</td>
       <td class="num">${r.newAcc||'-'}</td>
       <td class="num" style="font-weight:700">${r.base}</td>
-      <td class="num">${r.wdToday?`<span style="color:var(--neg)">${r.wdToday}</span>`:'-'}</td>
+      <td class="num">${wdCell}</td>
       <td class="num">${r.wdAcc||'-'}</td>
       <td class="num">${r.wdToday?`<span style="color:${r.rate>=2?'var(--neg)':'var(--ink-2)'}">${r.rate.toFixed(2)}%</span>`:'-'}</td>
     </tr>`;
   }).join('');
 
   const monthWd = data.rows.reduce((a,c)=>a+c.wdToday,0);
+  const monthTr = data.rows.reduce((a,c)=>a+(c.trToday||0),0);
   const monthNew = data.rows.reduce((a,c)=>a+c.newToday,0);
   const monthRate = data.startCount>0 ? (monthWd/(data.startCount+monthNew)*100) : 0;
 
   let html = headHtml + `
     <div class="sort-bar" style="margin-bottom:14px">${monthBtns}</div>
-    <div class="kpi-row c4">
+    <div class="kpi-row c5">
       ${kpiCard('월초 인원', data.startCount, {unit:'명'})}
       ${kpiCard('이달 신입(누계)', monthNew, {unit:'명', accent:true})}
       ${kpiCard('이달 퇴원(누계)', monthWd, {unit:'명'})}
+      ${kpiCard('이달 전출(누계)', monthTr, {unit:'명'})}
       ${kpiCard('말일 현원', data.endCount, {unit:'명'})}
     </div>
     <div class="table-wrap"><div class="table-scroll">
