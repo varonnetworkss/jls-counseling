@@ -604,8 +604,8 @@ function calcRates(recs, branchId, semId){
 function headcountClean(branchId, semId){
   const recs = recordsOf(branchId, semId);
   const total = recs.length;
-  // 신규: origin이 new이면서 전입이 아닌 순수 신규
-  const newCnt = recs.filter(r=>r.origin==='new' && !r.transferIn).length;
+  // 신규: origin이 new 또는 return(복귀)이면서 전입이 아닌 학생 (복귀생도 신규로 카운트)
+  const newCnt = recs.filter(r=>(r.origin==='new' || r.origin==='return') && !r.transferIn).length;
   // 전입: 다른 분원에서 넘어온 학생 (신규와 분리)
   const transferIn = recs.filter(r=>r.transferIn).length;
   // 퇴원: 전출 제외한 순수 퇴원만 (전출은 퇴원율에 반영 안 함)
@@ -1565,7 +1565,7 @@ function openCounseling(studentId, stage, name){
 function rosterCount(branchId, semId){
   let newCnt=0, transferInCnt=0, wdCnt=0, transferOutCnt=0;
   recordsOf(branchId, semId).forEach(r=>{
-    if(r.origin==='new' && !r.transferIn) newCnt++;
+    if((r.origin==='new' || r.origin==='return') && !r.transferIn) newCnt++;
     if(r.transferIn) transferInCnt++;
     if(r.status==='withdraw' && !r.transfer) wdCnt++;
     if(r.status==='withdraw' && r.transfer) transferOutCnt++;
@@ -1579,7 +1579,7 @@ function rosterRows(branchId, semId, tab){
     const s = getStudent(r.studentId);
     if(!s) return;
     // 4분류: new(순수신규)/transferIn(전입)/withdraw(순수퇴원)/transferOut(전출)
-    if(tab==='new' && !(r.origin==='new' && !r.transferIn)) return;
+   if(tab==='new' && !((r.origin==='new' || r.origin==='return') && !r.transferIn)) return;
     if(tab==='transferIn' && !r.transferIn) return;
     if(tab==='withdraw' && !(r.status==='withdraw' && !r.transfer)) return;
     if(tab==='transferOut' && !(r.status==='withdraw' && r.transfer)) return;
