@@ -1230,7 +1230,9 @@ function enterTeacher(branchId, teacherEnc){
   state.viewBranchId = branchId;
   go('branch/teacher/'+teacherEnc);
 }
-
+function emptyState(t, s){
+  return `<div class="empty"><div class="ei">○</div><div class="et">${esc(t)}</div><div class="es">${esc(s)}</div></div>`;
+}
 /* 전출-전입 매칭 경고 박스 (통합 대시보드용).
    전출했는데 도착분원에 전입 안 잡힌 건 / 전입인데 출발분원에 전출 없는 건을 빨강으로 경고. */
 function transferWarnBox(semId){
