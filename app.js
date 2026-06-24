@@ -2947,24 +2947,59 @@ function renderWcResults(){
     </div>`;
   }).join('');
 }
-/* 전출 ↔ 일반 퇴원 전환 */
+/* 전출 ↔ 일반 퇴원 전환. 전출로 바꿀 땐 목적지 분원을 골라야 함(본사 매칭용). */
 function convertWithdrawType(recId, toTransfer){
   const rec=db.semesterRecords.find(r=>r.id===recId);
   if(!rec) return;
   const s=getStudent(rec.studentId);
-  const label = toTransfer ? '전출' : '일반 퇴원';
-  openConfirm('퇴원 종류 변경',
-    `${s.name} (${s.code})을 ${label}(으)로 변경합니다.\n\n${toTransfer?'전출은 퇴원율 계산에서 제외됩니다.':'일반 퇴원은 퇴원율에 반영됩니다.'}`,
-    ()=>{
-      rec.transfer = toTransfer;
-      if(!toTransfer) rec.transferTo = null;  // 일반 퇴원이면 목적지 분원 정보 제거
-      // 이동이력 메모도 갱신
-      const mv = db.studentMovements.find(m=>m.studentId===rec.studentId && m.branchId===rec.branchId && m.semesterId===rec.semesterId && m.type==='withdraw');
-      if(mv){ mv.memo = (toTransfer?'[전출] ':'')+(mv.memo||'').replace(/^\[전출\]\s*/,''); }
-      showSaving('변경 중…');
-      saveDB().then(ok=>{ hideSaving(); closeModal();
-        toast(ok?`${s.name} ${label}(으)로 변경됨`:'저장 실패','ok'); render(); });
-    }, {yesLabel:'변경', danger:false});
+
+  // 일반 퇴원으로 되돌리는 건 분원 선택 불필요 — 바로 확인
+  if(!toTransfer){
+    openConfirm('퇴원 종류 변경',
+      `${s.name} (${s.code})을 일반 퇴원으로 변경합니다.\n\n일반 퇴원은 퇴원율에 반영됩니다.`,
+      ()=>{
+        rec.transfer = false;
+        rec.transferTo = null;
+        const mv = db.studentMovements.find(m=>m.studentId===rec.studentId && m.branchId===rec.branchId && m.semesterId===rec.semesterId && m.type==='withdraw');
+        if(mv){ mv.memo = (mv.memo||'').replace(/^\[전출[^\]]*\]\s*/,'') || '퇴원 처리'; }
+        showSaving('변경 중…');
+        saveDB().then(ok=>{ hideSaving(); closeModal();
+          toast(ok?`${s.name} 일반 퇴원으로 변경됨`:'저장 실패','ok'); render(); });
+      }, {yesLabel:'변경', danger:false});
+    return;
+  }
+
+  // 전출로 바꿀 땐 목적지 분원 드롭다운이 든 모달
+  const branchId = rec.branchId;
+  openModal(`
+    <div class="modal-head"><div><h3>전출로 변경</h3>
+      <div class="mh-sub">${esc(s.name)} (${esc(s.code)})</div></div>
+      <button class="modal-x" onclick="closeModal()">×</button></div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--ink-2);line-height:1.6;margin-bottom:12px">전출은 퇴원율 계산에서 제외됩니다. 어느 분원으로 가는지 선택하면 본사에서 전입과 대조할 수 있습니다.</p>
+      <div class="field full"><label>전출 대상 분원</label>
+        <select id="ctTransferTo">
+          <option value="">전출 분원 선택…</option>
+          ${db.branches.filter(x=>x.id!==branchId).map(x=>`<option value="${x.id}" ${rec.transferTo===x.id?'selected':''}>${esc(x.name)}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeModal()">취소</button>
+      <button class="btn primary" id="ctSave">전출로 변경</button>
+    </div>`);
+  el('ctSave').onclick = ()=>{
+    const toBranchId = el('ctTransferTo').value;
+    if(!toBranchId){ toast('전출 대상 분원을 선택하세요','err'); return; }
+    const toBranchName = getBranch(toBranchId)?.name||'';
+    rec.transfer = true;
+    rec.transferTo = toBranchId;
+    const mv = db.studentMovements.find(m=>m.studentId===rec.studentId && m.branchId===rec.branchId && m.semesterId===rec.semesterId && m.type==='withdraw');
+    if(mv){ mv.memo = `[전출→${toBranchName}] ` + (mv.memo||'').replace(/^\[전출[^\]]*\]\s*/,''); }
+    showSaving('변경 중…');
+    saveDB().then(ok=>{ hideSaving(); closeModal();
+      toast(ok?`${s.name} ${toBranchName}로 전출 변경됨`:'저장 실패','ok'); render(); });
+  };
 }
 /* 재원 복귀 — 잘못 퇴원시킨 학생 되돌리기 */
 function restoreStudent(recId){
