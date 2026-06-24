@@ -1561,12 +1561,14 @@ function openCounseling(studentId, stage, name){
    ============================================================================ */
 /* 한 분원의 신규·퇴원 인원 집계 */
 function rosterCount(branchId, semId){
-  let newCnt=0, wdCnt=0;
+  let newCnt=0, transferInCnt=0, wdCnt=0, transferOutCnt=0;
   recordsOf(branchId, semId).forEach(r=>{
-    if(r.origin==='new') newCnt++;
-    if(r.status==='withdraw') wdCnt++;
+    if(r.origin==='new' && !r.transferIn) newCnt++;
+    if(r.transferIn) transferInCnt++;
+    if(r.status==='withdraw' && !r.transfer) wdCnt++;
+    if(r.status==='withdraw' && r.transfer) transferOutCnt++;
   });
-  return { newCnt, wdCnt };
+  return { newCnt, transferInCnt, wdCnt, transferOutCnt };
 }
 /* 한 분원의 신규 또는 퇴원 학생 행 목록 */
 function rosterRows(branchId, semId, tab){
@@ -1574,12 +1576,16 @@ function rosterRows(branchId, semId, tab){
   recordsOf(branchId, semId).forEach(r=>{
     const s = getStudent(r.studentId);
     if(!s) return;
-    if(tab==='new' && r.origin!=='new') return;
-    if(tab==='withdraw' && r.status!=='withdraw') return;
-    const mvType = tab==='new' ? 'new' : 'withdraw';
+    // 4분류: new(순수신규)/transferIn(전입)/withdraw(순수퇴원)/transferOut(전출)
+    if(tab==='new' && !(r.origin==='new' && !r.transferIn)) return;
+    if(tab==='transferIn' && !r.transferIn) return;
+    if(tab==='withdraw' && !(r.status==='withdraw' && !r.transfer)) return;
+    if(tab==='transferOut' && !(r.status==='withdraw' && r.transfer)) return;
+    const isIn = (tab==='new' || tab==='transferIn');
+    const mvType = isIn ? 'new' : 'withdraw';
     const mv = db.studentMovements.find(m=>m.studentId===r.studentId && m.branchId===branchId && m.semesterId===semId && m.type===mvType);
-    const date = tab==='new' ? (r.enrollDate || (mv&&mv.date) || '-')
-                             : (r.withdrawDate || (mv&&mv.date) || '-');
+    const date = isIn ? (r.enrollDate || (mv&&mv.date) || '-')
+                      : (r.withdrawDate || (mv&&mv.date) || '-');
     rows.push({
       name:s.name, code:s.code, school:s.school||'', grade:s.grade||'',
       classLabel:r.classLabel||r.className||'-', teacher:r.teacher||'-',
@@ -1598,37 +1604,43 @@ function renderRoster(){
 
   crumbs([{label:'신규·퇴원 명단'}]);
 
-  // 전체 요약 + 분원별 카드
-  let totNew=0, totWd=0;
+// 전체 요약 + 분원별 카드
+  let totNew=0, totIn=0, totWd=0, totOut=0;
   const cards = db.branches.map(b=>{
     const c = rosterCount(b.id, semId);
-    totNew+=c.newCnt; totWd+=c.wdCnt;
+    totNew+=c.newCnt; totIn+=c.transferInCnt; totWd+=c.wdCnt; totOut+=c.transferOutCnt;
     return { b, ...c };
   });
 
   let html = `
     <div class="page-head">
-      <h2>신규·퇴원 명단</h2>
+      <h2>신규·전입·퇴원·전출 명단</h2>
       <div class="sub">전 분원 · ${esc(db.semesters.find(s=>s.id===semId).name)}</div>
     </div>
-    <div class="kpi-row c2">
+    <div class="kpi-row c4">
       ${kpiCard('전체 신규생', totNew, {unit:'명', accent:true})}
+      ${kpiCard('전체 전입', totIn, {unit:'명'})}
       ${kpiCard('전체 퇴원생', totWd, {unit:'명'})}
+      ${kpiCard('전체 전출', totOut, {unit:'명'})}
     </div>
     <div class="sect-head"><h3>분원별 현황</h3><span class="cnt">카드를 클릭하면 명단 상세로 이동</span></div>
     <div class="card-grid g3">
-    ${cards.map(({b,newCnt,wdCnt})=>`
-      <div class="card clickable" onclick="go('roster/branch/${b.id}')">
+    ${cards.map(({b,newCnt,transferInCnt,wdCnt,transferOutCnt})=>{
+      const total = newCnt+transferInCnt+wdCnt+transferOutCnt;
+      return `<div class="card clickable" onclick="go('roster/branch/${b.id}')">
         <div class="card-top">
           <div><div class="card-name">${esc(b.name)}</div>
-            <div class="card-sub">${newCnt+wdCnt>0?'클릭해서 명단 보기':'변동 없음'}</div></div>
+            <div class="card-sub">${total>0?'클릭해서 명단 보기':'변동 없음'}</div></div>
         </div>
-        <div class="roster-mini">
-          <div class="rm-box new"><div class="rm-num">${newCnt}</div><div class="rm-label">신규생</div></div>
-          <div class="rm-box wd"><div class="rm-num">${wdCnt}</div><div class="rm-label">퇴원생</div></div>
+        <div class="roster-mini" style="grid-template-columns:repeat(4,1fr)">
+          <div class="rm-box new"><div class="rm-num">${newCnt}</div><div class="rm-label">신규</div></div>
+          <div class="rm-box" style="background:var(--pos-soft)"><div class="rm-num" style="color:var(--pos)">${transferInCnt}</div><div class="rm-label">전입</div></div>
+          <div class="rm-box wd"><div class="rm-num">${wdCnt}</div><div class="rm-label">퇴원</div></div>
+          <div class="rm-box" style="background:var(--warn-soft)"><div class="rm-num" style="color:var(--warn)">${transferOutCnt}</div><div class="rm-label">전출</div></div>
         </div>
         <div class="card-foot"><span></span>${goArrow}</div>
-      </div>`).join('')}
+      </div>`;
+    }).join('')}
     </div>`;
   el('content').innerHTML = html;
 }
@@ -1664,9 +1676,11 @@ function renderRosterDetail(branchId){
       <h2>${esc(b.name)} 신규·퇴원 명단</h2>
       <div class="sub">${esc(db.semesters.find(s=>s.id===semId).name)}</div>
     </div>
-    <div class="sort-bar" style="margin-bottom:12px">
+  <div class="sort-bar" style="margin-bottom:12px">
       <button class="sb-btn ${tab==='new'?'on':''}" onclick="setRosterTab('new')">신규생 ${c.newCnt}</button>
+      <button class="sb-btn ${tab==='transferIn'?'on':''}" onclick="setRosterTab('transferIn')">전입 ${c.transferInCnt}</button>
       <button class="sb-btn ${tab==='withdraw'?'on':''}" onclick="setRosterTab('withdraw')">퇴원생 ${c.wdCnt}</button>
+      <button class="sb-btn ${tab==='transferOut'?'on':''}" onclick="setRosterTab('transferOut')">전출 ${c.transferOutCnt}</button>
     </div>
     <div class="roster-filter">
       <select onchange="setRosterTeacher(this.value)">
@@ -1678,13 +1692,14 @@ function renderRosterDetail(branchId){
     </div>`;
 
   if(rows.length===0){
-    html += emptyState(tab==='new'?'신규생이 없습니다':'퇴원생이 없습니다', '');
+    const emptyMsg = {new:'신규생이 없습니다', transferIn:'전입생이 없습니다', withdraw:'퇴원생이 없습니다', transferOut:'전출생이 없습니다'}[tab] || '없습니다';
+    html += emptyState(emptyMsg, '');
   } else {
     html += `<div class="table-wrap"><div class="table-scroll">
       <table class="rank-table" id="rosterTable">
         <thead><tr>
           <th>학생명</th><th>회원코드</th><th>반</th><th>담임</th>
-          <th>학교/학년</th><th>${tab==='new'?'입학일':'퇴원일'}</th><th>${tab==='new'?'메모':'사유'}</th>
+          <th>학교/학년</th><th>${(tab==='new'||tab==='transferIn')?'입학일':'퇴원일'}</th><th>${(tab==='new'||tab==='transferIn')?'메모':'사유'}</th>
         </tr></thead>
         <tbody>
         ${rows.map(r=>{
