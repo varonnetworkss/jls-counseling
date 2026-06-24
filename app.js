@@ -323,7 +323,10 @@ function examRecordsOf(branchId, semId){
 /* 상담률 계산용 — 정규반 active + 내신반 active 합친 레코드.
    인원/퇴원 집계엔 쓰지 말 것(그건 recordsOf/activeRecordsOf만). 상담률(calcRates) 전용. */
 function rateRecordsOf(branchId, semId){
-  return activeRecordsOf(branchId, semId).concat(examRecordsOf(branchId, semId));
+  // 상담률 분모엔 재원생 + 퇴원생(정규반) 모두 포함.
+  // 퇴원생은 isTarget이 '퇴원월 이후 회차'를 알아서 제외하므로,
+  // 퇴원 전에 했어야 할 회차의 펑크는 정직하게 분모에 잡힌다.
+  return recordsOf(branchId, semId).concat(examRecordsOf(branchId, semId));
 }
 /* 특정 담임의 정규+내신 active 합본 (상담률용) */
 function rateRecordsOfTeacher(branchId, semId, teacher){
@@ -497,27 +500,6 @@ function dailyClosing(recs, year, month){
    HC1/HC2: 신규·복귀생이면 입학월 상관없이 대상
    MC1/2/3: 입학월 이후의 MC만 대상 (예: 7월 입학 → MC1 제외, MC2·MC3 대상) */
 function isTarget(rec, stage, semId){
-  const sid = semId || (typeof state!=='undefined'?state.semId:null);
-  const isExam = (rec.kind||'regular')==='exam';
-
-  // 내신반: 면제로 넘어온 회차(MC)만 대상. HC와 면제 안 된 MC는 전부 대상 아님.
-  if(isExam){
-    if(stage==='HC1'||stage==='HC2') return false;
-    return isExempt(rec.studentId, rec.branchId, sid, stage);
-  }
-
-  // 정규반: 면제된 MC 회차는 대상 아님 (내신반으로 넘어감)
-  if(stage!=='HC1' && stage!=='HC2' && isExempt(rec.studentId, rec.branchId, sid, stage)){
-    return false;
-  }
-
-  if(stage==='HC1'||stage==='HC2') return rec.targetType==='HCMC';
-  const months = semesterMonths(sid);
-  const mcMonth = { MC1:months[0], MC2:months[1], MC3:months[2] }[stage];
-  const em = enrollMonth(rec);
-  if(em==null) return true;
-  return em <= mcMonth;
-}
 /* 이 학생의 이 회차가 정규반에서 면제됐는지 (= 내신반으로 넘어갔는지) */
 function isExempt(studentId, branchId, semId, stage){
   return (db.mcExemptions||[]).some(e=>
@@ -1377,18 +1359,7 @@ const activeRecs = recs.filter(r=>r.status==='active');
       ? '<span class="status-badge active">재원</span>'
       : '<span class="status-badge withdraw">퇴원</span>';
     const isExam = (rec.kind||'regular')==='exam';
-const isWithdrawn = rec.status==='withdraw';
-    // 퇴원월 — 이 달보다 뒤의 회차는 어차피 다닐 때가 아니므로 대상에서 제외(–)
-    const wMonth = isWithdrawn ? withdrawMonth(rec) : null;
-    const cells = STAGES.map(stg=>{
-      // 퇴원생: 퇴원월 이후의 MC 회차는 다닐 때가 아니었음 → 무조건 –
-      if(isWithdrawn && wMonth!=null && (stg==='MC1'||stg==='MC2'||stg==='MC3')){
-        const months = semesterMonths(semId);
-        const stgMonth = { MC1:months[0], MC2:months[1], MC3:months[2] }[stg];
-        if(stgMonth > wMonth){
-          return `<td class="cc"><span class="cc-mark na" title="퇴원 후 회차">–</span></td>`;
-        }
-      }
+const cells = STAGES.map(stg=>{
       const isMc = (stg==='MC1'||stg==='MC2'||stg==='MC3');
       const exempt = isMc && isExempt(rec.studentId, branchId, semId, stg);
 
