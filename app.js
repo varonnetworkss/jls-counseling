@@ -996,14 +996,15 @@ tot.start+=hc.start; tot.newCnt+=hc.newCnt; tot.transferIn+=hc.transferIn; tot.w
       <h2>통합 대시보드</h2>
       <div class="sub">6개 분원 통합 현황 · ${esc(db.semesters.find(s=>s.id===semId).name)}</div>
     </div>
-<div class="kpi-row c6">
+<div class="kpi-row c7">
       ${kpiCard('전체 학기초 인원', tot.start, {unit:'명'})}
       ${kpiCard('전체 신규생', tot.newCnt, {unit:'명'})}
+      ${kpiCard('전체 전입', tot.transferIn, {unit:'명'})}
       ${kpiCard('전체 퇴원생', tot.withdraw, {unit:'명'})}
       ${kpiCard('전체 전출', tot.transfer, {unit:'명'})}
       ${kpiCard('전체 퇴원율', totWithdrawRate, {unit:'%'})}
       ${kpiCard('현 재원생', tot.active, {unit:'명', accent:true})}
-    </div>
+    </div>`+ transferWarnBox(semId) +`
     <div class="sect-head">
       <h3>분원별 현황</h3>
       <div class="sort-bar">
