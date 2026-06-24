@@ -500,6 +500,39 @@ function dailyClosing(recs, year, month){
    HC1/HC2: 신규·복귀생이면 입학월 상관없이 대상
    MC1/2/3: 입학월 이후의 MC만 대상 (예: 7월 입학 → MC1 제외, MC2·MC3 대상) */
 function isTarget(rec, stage, semId){
+  const sid = semId || (typeof state!=='undefined'?state.semId:null);
+  const isExam = (rec.kind||'regular')==='exam';
+
+  // 내신반: 면제로 넘어온 회차(MC)만 대상. HC와 면제 안 된 MC는 전부 대상 아님.
+  if(isExam){
+    if(stage==='HC1'||stage==='HC2') return false;
+    return isExempt(rec.studentId, rec.branchId, sid, stage);
+  }
+
+  // 정규반: 면제된 MC 회차는 대상 아님 (내신반으로 넘어감)
+  if(stage!=='HC1' && stage!=='HC2' && isExempt(rec.studentId, rec.branchId, sid, stage)){
+    return false;
+  }
+
+  // 퇴원생: 퇴원월 이후의 MC 회차는 다닐 때가 아니었으므로 대상 아님.
+  // (HC와 퇴원월 이전/같은 달 MC는 정상 판정 → 안 했으면 미완료로 분모에 잡힘)
+  if(rec.status==='withdraw' && (stage==='MC1'||stage==='MC2'||stage==='MC3')){
+    const wm = withdrawMonth(rec);
+    if(wm!=null){
+      const ms = semesterMonths(sid);
+      const stgMonth = { MC1:ms[0], MC2:ms[1], MC3:ms[2] }[stage];
+      const order = m => ms.indexOf(m);
+      if(order(stgMonth) > order(wm)) return false;
+    }
+  }
+
+  if(stage==='HC1'||stage==='HC2') return rec.targetType==='HCMC';
+  const months = semesterMonths(sid);
+  const mcMonth = { MC1:months[0], MC2:months[1], MC3:months[2] }[stage];
+  const em = enrollMonth(rec);
+  if(em==null) return true;
+  return em <= mcMonth;
+}
 /* 이 학생의 이 회차가 정규반에서 면제됐는지 (= 내신반으로 넘어갔는지) */
 function isExempt(studentId, branchId, semId, stage){
   return (db.mcExemptions||[]).some(e=>
@@ -1335,10 +1368,9 @@ function renderClassDetail(teacher, className){
       if(aw!==bw) return aw-bw;
       return getStudent(a.studentId).name.localeCompare(getStudent(b.studentId).name,'ko');
     });
-const activeRecs = recs.filter(r=>r.status==='active');
-  const isExamClass = recs.length>0 && (recs[0].kind||'regular')==='exam';
+const isExamClass = recs.length>0 && (recs[0].kind||'regular')==='exam';
   if(recs.length===0){ el('content').innerHTML = emptyState('해당 반 데이터가 없습니다',''); return; }
-  const rates = calcRates(activeRecs, branchId, semId);
+  const rates = calcRates(recs, branchId, semId);
   const classLbl = recs[0].classLabel || classLabel(className) || className;
 
   const tBack = isAdmin ? 'admin/branch/'+branchId : 'branch';
