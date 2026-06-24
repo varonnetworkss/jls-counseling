@@ -1377,15 +1377,17 @@ const activeRecs = recs.filter(r=>r.status==='active');
       ? '<span class="status-badge active">재원</span>'
       : '<span class="status-badge withdraw">퇴원</span>';
     const isExam = (rec.kind||'regular')==='exam';
-    const isWithdrawn = rec.status==='withdraw';
+const isWithdrawn = rec.status==='withdraw';
+    // 퇴원월 — 이 달보다 뒤의 회차는 어차피 다닐 때가 아니므로 대상에서 제외(–)
+    const wMonth = isWithdrawn ? withdrawMonth(rec) : null;
     const cells = STAGES.map(stg=>{
-      // 퇴원생: 이미 완료한 상담(○)만 보이고, 나머지는 전부 막음(–)
-      if(isWithdrawn){
-        if(isDone(rec.studentId, branchId, semId, stg)){
-          return `<td class="cc"><span class="cc-mark done" title="상담 내용 보기"
-            onclick="openCounseling('${rec.studentId}','${stg}','${esc(stu.name)}')">○</span></td>`;
+      // 퇴원생: 퇴원월 이후의 MC 회차는 다닐 때가 아니었음 → 무조건 –
+      if(isWithdrawn && wMonth!=null && (stg==='MC1'||stg==='MC2'||stg==='MC3')){
+        const months = semesterMonths(semId);
+        const stgMonth = { MC1:months[0], MC2:months[1], MC3:months[2] }[stg];
+        if(stgMonth > wMonth){
+          return `<td class="cc"><span class="cc-mark na" title="퇴원 후 회차">–</span></td>`;
         }
-        return `<td class="cc"><span class="cc-mark na" title="퇴원 — 이후 상담 없음">–</span></td>`;
       }
       const isMc = (stg==='MC1'||stg==='MC2'||stg==='MC3');
       const exempt = isMc && isExempt(rec.studentId, branchId, semId, stg);
