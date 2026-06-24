@@ -172,8 +172,8 @@ const TABLES = [
     fromRow:r=>({id:r.id,name:r.name}) },
   { key:'students',           table:'students',             toRow:s=>({id:s.id,code:s.code,name:s.name,school:s.school,grade:s.grade}),
     fromRow:r=>({id:r.id,code:r.code,name:r.name,school:r.school,grade:r.grade}) },
-{ key:'semesterRecords',    table:'semester_records',     toRow:r=>({id:r.id,student_id:r.studentId,branch_id:r.branchId,semester_id:r.semesterId,class_name:r.className,class_label:r.classLabel,teacher:r.teacher,note:r.note,target_type:r.targetType,status:r.status,origin:r.origin,enroll_date:r.enrollDate,withdraw_date:r.withdrawDate,transfer:!!r.transfer,kind:r.kind||'regular'}),
-    fromRow:r=>({id:r.id,studentId:r.student_id,branchId:r.branch_id,semesterId:r.semester_id,className:r.class_name,classLabel:r.class_label,teacher:r.teacher,note:r.note,targetType:r.target_type,status:r.status,origin:r.origin,enrollDate:r.enroll_date,withdrawDate:r.withdraw_date,transfer:!!r.transfer,kind:r.kind||'regular'}) },
+{ key:'semesterRecords',    table:'semester_records',     toRow:r=>({id:r.id,student_id:r.studentId,branch_id:r.branchId,semester_id:r.semesterId,class_name:r.className,class_label:r.classLabel,teacher:r.teacher,note:r.note,target_type:r.targetType,status:r.status,origin:r.origin,enroll_date:r.enrollDate,withdraw_date:r.withdrawDate,transfer:!!r.transfer,transfer_in:!!r.transferIn,transfer_to:r.transferTo||null,kind:r.kind||'regular'}),
+    fromRow:r=>({id:r.id,studentId:r.student_id,branchId:r.branch_id,semesterId:r.semester_id,className:r.class_name,classLabel:r.class_label,teacher:r.teacher,note:r.note,targetType:r.target_type,status:r.status,origin:r.origin,enrollDate:r.enroll_date,withdrawDate:r.withdraw_date,transfer:!!r.transfer,transferIn:!!r.transfer_in,transferTo:r.transfer_to,kind:r.kind||'regular'}) },
   { key:'counselingHistories',table:'counseling_histories', toRow:c=>({id:c.id,student_id:c.studentId,branch_id:c.branchId,semester_id:c.semesterId,date:c.date,type:c.type,content:c.content,counselor:c.counselor,batch_id:c.batchId,mistag:!!c.mistag}),
     fromRow:r=>({id:r.id,studentId:r.student_id,branchId:r.branch_id,semesterId:r.semester_id,date:r.date,type:r.type,content:r.content,counselor:r.counselor,batchId:r.batch_id,mistag:!!r.mistag}) },
   { key:'studentMovements',   table:'student_movements',    toRow:m=>({id:m.id,student_id:m.studentId,branch_id:m.branchId,semester_id:m.semesterId,type:m.type,date:m.date,memo:m.memo}),
@@ -437,7 +437,7 @@ function monthlyClosing(recs, months, activeMonths, splits){
     const active = !activeMonths || activeMonths.has(m);
     const sp = splitByMonth.get(m);
     let monthStart = idx===0 ? startOfSem : carry;
-    let newThis, wdThis, trThis;
+let newThis, tiThis=0, wdThis, trThis;
     if(sp){
       // 변경월: 날짜로 쪼갬
       const split = splitMonthForGroup(recs, m, sp.cutDay);
@@ -446,18 +446,19 @@ function monthlyClosing(recs, months, activeMonths, splits){
       newThis = part.newCnt;
       wdThis = part.wd;
       trThis = part.tr;
-    } else {
-      newThis = recs.filter(r=> enrollMonth(r)===m).length;
+} else {
+      newThis = recs.filter(r=> enrollMonth(r)===m && !r.transferIn).length;
+      tiThis  = recs.filter(r=> enrollMonth(r)===m && r.transferIn).length;
       wdThis  = recs.filter(r=> withdrawMonth(r)===m && !r.transfer).length;
       trThis  = recs.filter(r=> withdrawMonth(r)===m && r.transfer).length;
     }
-const baseNew = monthStart + newThis;
+const baseNew = monthStart + newThis + tiThis;
     const rate = baseNew>0 ? (wdThis/baseNew*100) : 0;
     if(active){
-      cells.push({ month:m, monthStart, newThis, baseNew, withdraw:wdThis, transfer:trThis, rate, blank:false });
+      cells.push({ month:m, monthStart, newThis, transferIn:tiThis, baseNew, withdraw:wdThis, transfer:trThis, rate, blank:false });
       if(baseNew>0) rates.push(rate);
     } else {
-      cells.push({ month:m, monthStart:0, newThis:0, baseNew:0, withdraw:0, transfer:0, rate:0, blank:true });
+      cells.push({ month:m, monthStart:0, newThis:0, transferIn:0, baseNew:0, withdraw:0, transfer:0, rate:0, blank:true });
     }
     carry = baseNew - wdThis - trThis;
   });
@@ -603,13 +604,17 @@ function calcRates(recs, branchId, semId){
 function headcountClean(branchId, semId){
   const recs = recordsOf(branchId, semId);
   const total = recs.length;
-  const newCnt = recs.filter(r=>r.origin==='new').length;
+  // 신규: origin이 new이면서 전입이 아닌 순수 신규
+  const newCnt = recs.filter(r=>r.origin==='new' && !r.transferIn).length;
+  // 전입: 다른 분원에서 넘어온 학생 (신규와 분리)
+  const transferIn = recs.filter(r=>r.transferIn).length;
   // 퇴원: 전출 제외한 순수 퇴원만 (전출은 퇴원율에 반영 안 함)
   const withdraw = recs.filter(r=>r.status==='withdraw' && !r.transfer).length;
   const transfer = recs.filter(r=>r.status==='withdraw' && r.transfer).length;
   const active = recs.filter(r=>r.status==='active').length;
-  const startCount = total - newCnt;       // 학기초 인원 = 전체 - 신규
-  return { start:startCount, newCnt, withdraw, transfer, active, net:newCnt - withdraw - transfer };
+  // 학기초 인원 = 전체 - 신규 - 전입 (둘 다 학기 중 들어온 인원)
+  const startCount = total - newCnt - transferIn;
+  return { start:startCount, newCnt, transferIn, withdraw, transfer, active, net:newCnt + transferIn - withdraw - transfer };
 }
 
 /* 담임별 집계 */
@@ -645,6 +650,34 @@ function allTeachers(semId){
     });
   });
   return out;
+}
+/* 전출-전입 매칭 검증 — 본사용.
+   전출(분원A에서 transfer=true, transferTo=B)에 대응하는 전입(분원B에서 transferIn=true)이 있는지 회원코드로 대조.
+   반환: { matched:[], unmatchedOut:[전출했는데 도착분원에 전입 없음], unmatchedIn:[전입인데 출발분원에 전출 없음] } */
+function transferMatch(semId){
+  const recs = db.semesterRecords.filter(r=>r.semesterId===semId && (r.kind||'regular')!=='exam');
+  const outs = recs.filter(r=>r.status==='withdraw' && r.transfer);   // 전출들
+  const ins  = recs.filter(r=>r.transferIn);                          // 전입들
+  const codeOf = r=>{ const s=getStudent(r.studentId); return s?s.code:''; };
+
+  const matched=[], unmatchedOut=[], unmatchedIn=[];
+  const usedIn = new Set();
+
+  outs.forEach(o=>{
+    const code = codeOf(o);
+    // 이 전출에 대응하는 전입: 도착분원(o.transferTo)에서 같은 회원코드로 전입한 레코드
+    const match = ins.find(i=> codeOf(i)===code && i.branchId===o.transferTo && !usedIn.has(i.id));
+    if(match){ usedIn.add(match.id); matched.push({out:o, in:match, code}); }
+    else unmatchedOut.push({out:o, code});
+  });
+  // 전입인데 대응 전출 없는 것
+  ins.forEach(i=>{
+    if(usedIn.has(i.id)) return;
+    const code = codeOf(i);
+    const match = outs.find(o=> codeOf(o)===code && o.transferTo===i.branchId);
+    if(!match) unmatchedIn.push({in:i, code});
+  });
+  return { matched, unmatchedOut, unmatchedIn };
 }
 
 /* 한 담임의 반별 집계 */
@@ -943,12 +976,12 @@ function renderAdminDashboard(){
   const semId = state.semId;
   crumbs([{label:'통합 대시보드'}]);
 
-  // 전체 합산
-  let tot = { start:0, newCnt:0, withdraw:0, transfer:0, active:0, net:0 };
+// 전체 합산
+  let tot = { start:0, newCnt:0, transferIn:0, withdraw:0, transfer:0, active:0, net:0 };
 const cards = db.branches.map(b=>{
     const hc = headcountClean(b.id, semId);
     const rates = calcRates(rateRecordsOf(b.id, semId), b.id, semId);
-tot.start+=hc.start; tot.newCnt+=hc.newCnt; tot.withdraw+=hc.withdraw;
+tot.start+=hc.start; tot.newCnt+=hc.newCnt; tot.transferIn+=hc.transferIn; tot.withdraw+=hc.withdraw;
     tot.transfer+=hc.transfer; tot.active+=hc.active; tot.net+=hc.net;
     // 분원 퇴원율 = 퇴원 / (재원+퇴원)
     const wbase = hc.active + hc.withdraw;
@@ -963,7 +996,7 @@ tot.start+=hc.start; tot.newCnt+=hc.newCnt; tot.withdraw+=hc.withdraw;
       <h2>통합 대시보드</h2>
       <div class="sub">6개 분원 통합 현황 · ${esc(db.semesters.find(s=>s.id===semId).name)}</div>
     </div>
-    <div class="kpi-row c6">
+<div class="kpi-row c6">
       ${kpiCard('전체 학기초 인원', tot.start, {unit:'명'})}
       ${kpiCard('전체 신규생', tot.newCnt, {unit:'명'})}
       ${kpiCard('전체 퇴원생', tot.withdraw, {unit:'명'})}
@@ -1110,9 +1143,10 @@ function renderAdminBranchDetail(branchId){
       <h2>${esc(b.name)}</h2>
       <div class="sub">분원 상세 현황 · ${esc(db.semesters.find(s=>s.id===semId).name)}</div>
     </div>
-    <div class="kpi-row c5">
+<div class="kpi-row c6">
       ${kpiCard('학기초 인원', hc.start, {unit:'명'})}
       ${kpiCard('신규생', hc.newCnt, {unit:'명'})}
+      ${kpiCard('전입', hc.transferIn, {unit:'명'})}
       ${kpiCard('퇴원생', hc.withdraw, {unit:'명'})}
       ${kpiCard('전출', hc.transfer, {unit:'명'})}
       ${kpiCard('현 재원생', hc.active, {unit:'명', accent:true})}
@@ -1196,8 +1230,28 @@ function enterTeacher(branchId, teacherEnc){
   go('branch/teacher/'+teacherEnc);
 }
 
-function emptyState(t, s){
-  return `<div class="empty"><div class="ei">○</div><div class="et">${esc(t)}</div><div class="es">${esc(s)}</div></div>`;
+/* 전출-전입 매칭 경고 박스 (통합 대시보드용).
+   전출했는데 도착분원에 전입 안 잡힌 건 / 전입인데 출발분원에 전출 없는 건을 빨강으로 경고. */
+function transferWarnBox(semId){
+  const { matched, unmatchedOut, unmatchedIn } = transferMatch(semId);
+  if(unmatchedOut.length===0 && unmatchedIn.length===0){
+    if(matched.length===0) return '';  // 전출입 자체가 없으면 박스 안 띄움
+    return `<div style="margin:14px 0;padding:12px 14px;border:1px solid var(--pos-soft);background:var(--pos-soft);border-radius:var(--radius-sm);font-size:12.5px;color:var(--pos)">
+      ✓ 전출-전입 ${matched.length}건 모두 정상 매칭됨 (서수원 전출 = 장안 전입 식으로 양쪽 다 잡힘)</div>`;
+  }
+  const nameOf = bid => { const b=getBranch(bid); return b?b.name:'(분원?)'; };
+  const stuOf = rec => { const s=getStudent(rec.studentId); return s?`${s.name}(${s.code})`:rec.studentId; };
+  let rows = '';
+  unmatchedOut.forEach(({out})=>{
+    rows += `<div style="padding:4px 0">⚠ <b>${esc(nameOf(out.branchId))}</b>에서 <b>${esc(nameOf(out.transferTo))}</b>로 전출 처리한 <b>${esc(stuOf(out))}</b> — 도착 분원에 전입 기록이 없습니다.</div>`;
+  });
+  unmatchedIn.forEach(({in:i})=>{
+    rows += `<div style="padding:4px 0">⚠ <b>${esc(nameOf(i.branchId))}</b>에 <b>${esc(nameOf(i.transferTo))}</b>에서 전입 처리한 <b>${esc(stuOf(i))}</b> — 출발 분원에 전출 기록이 없습니다.</div>`;
+  });
+  return `<div style="margin:14px 0;padding:14px 16px;border:1px solid var(--neg-soft);background:var(--neg-soft);border-radius:var(--radius-sm)">
+    <div style="font-size:13px;font-weight:700;color:var(--neg);margin-bottom:6px">전출-전입 불일치 ${unmatchedOut.length+unmatchedIn.length}건 — 분원 간 확인 필요</div>
+    <div style="font-size:12.5px;color:var(--ink-2);line-height:1.5">${rows}</div>
+    ${matched.length?`<div style="margin-top:8px;font-size:12px;color:var(--pos)">✓ 정상 매칭 ${matched.length}건은 양쪽 다 잡혔습니다.</div>`:''}</div>`;
 }
 /* ============================================================================
    11. 분원 — Dashboard (요약 + 담임별 현황). 업로드 버튼 없음(보는 화면)
@@ -1223,9 +1277,10 @@ function renderBranchDashboard(){
       <h2>${esc(b.name)} Dashboard</h2>
       <div class="sub">${esc(db.semesters.find(s=>s.id===semId).name)} 운영 현황</div>
     </div>
-<div class="kpi-row c5">
+<div class="kpi-row c6">
       ${kpiCard('학기초 인원', hc.start, {unit:'명'})}
       ${kpiCard('신규생', hc.newCnt, {unit:'명'})}
+      ${kpiCard('전입', hc.transferIn, {unit:'명'})}
       ${kpiCard('퇴원생', hc.withdraw, {unit:'명'})}
       ${kpiCard('전출', hc.transfer, {unit:'명'})}
       ${kpiCard('현 재원생', hc.active, {unit:'명', accent:true})}
@@ -1701,11 +1756,13 @@ function closingTable(groups, months, firstColLabel, totalRecs){
     const r = monthlyClosing(g.recs, months, g.activeMonths, g.splits);
     const splitMonths = new Set((g.splits||[]).map(s=>s.month));
     const monthCells = r.cells.map(c=>{
-      if(c.blank) return `<td class="num cc cell-na">-</td><td class="num cc cell-na">-</td><td class="num cc cell-na">-</td><td class="num cc cell-na">-</td><td class="num cc cell-na">-</td>`;
+     if(c.blank) return `<td class="num cc cell-na">-</td><td class="num cc cell-na">-</td><td class="num cc cell-na">-</td><td class="num cc cell-na">-</td><td class="num cc cell-na">-</td><td class="num cc cell-na">-</td>`;
       const cls = splitMonths.has(c.month) ? ' cell-split' : '';
       const trCell = c.transfer ? `<span style="color:var(--warn)">${c.transfer}</span>` : '-';
+      const tiCell = c.transferIn ? `<span style="color:var(--pos)">${c.transferIn}</span>` : '-';
       return `<td class="num cc${cls}">${c.monthStart||'-'}</td>
       <td class="num cc${cls}">${c.newThis||'-'}</td>
+      <td class="num cc${cls}">${tiCell}</td>
       <td class="num cc${cls}">${c.withdraw||'-'}</td>
       <td class="num cc${cls}">${trCell}</td>
       <td class="num cc${cls}"><span style="color:${c.rate>=10?'var(--neg)':c.rate>=5?'var(--warn)':'var(--ink-2)'}">${c.baseNew?c.rate.toFixed(1)+'%':'-'}</span></td>`;
@@ -1723,9 +1780,11 @@ function closingTable(groups, months, firstColLabel, totalRecs){
   // 합계 — 원본 전체에서 한 번씩 계산 (담임변경으로 학생이 두 줄에 중복돼도 1회만)
   const baseForTotal = totalRecs || groups.reduce((acc,g)=>acc.concat(g.recs),[]);
   const totR = monthlyClosing(baseForTotal, months);
-  const totalCells = totR.cells.map(c=>{
+const totalCells = totR.cells.map(c=>{
     const trCell = c.transfer ? `<span style="color:var(--warn)">${c.transfer}</span>` : '-';
+    const tiCell = c.transferIn ? `<span style="color:var(--pos)">${c.transferIn}</span>` : '-';
     return `<td class="num cc">${c.monthStart||'-'}</td><td class="num cc">${c.newThis||'-'}</td>
+      <td class="num cc">${tiCell}</td>
       <td class="num cc">${c.withdraw||'-'}</td><td class="num cc">${trCell}</td>
       <td class="num cc">${c.baseNew?c.rate.toFixed(1)+'%':'-'}</td>`;
   }).join('');
@@ -1733,8 +1792,8 @@ function closingTable(groups, months, firstColLabel, totalRecs){
   const totWithdrawSum = totR.totWithdraw;
   const totTransferSum = totR.totTransfer;
 
-  const monthHeads = monthNames.map(mn=>`<th class="cc" colspan="5">${mn}</th>`).join('');
-  const subHeads = months.map(()=>`<th class="cc">월초</th><th class="cc">신규</th><th class="cc">퇴원</th><th class="cc">전출</th><th class="cc">퇴원율</th>`).join('');
+  const monthHeads = monthNames.map(mn=>`<th class="cc" colspan="6">${mn}</th>`).join('');
+  const subHeads = months.map(()=>`<th class="cc">월초</th><th class="cc">신규</th><th class="cc">전입</th><th class="cc">퇴원</th><th class="cc">전출</th><th class="cc">퇴원율</th>`).join('');
 
   return `<div class="table-wrap"><div class="table-scroll">
     <table class="rank-table closing-table">
@@ -2172,6 +2231,15 @@ function renderStudentManagement(){
           <div class="field"><label>입학일 (등원일)</label><input id="nsDate" type="date"></div>
           <div class="field"><label>메모 (선택)</label><input id="nsMemo" placeholder="예: 운정1에서 전입"></div>
         </div>
+        <label class="wd-transfer" style="margin-bottom:10px"><input type="checkbox" id="nsTransferIn" onchange="document.getElementById('nsTransferFromRow').style.display=this.checked?'flex':'none'"> <span>전입 (다른 분원에서 옴) — 신규생과 분리 집계</span></label>
+        <div class="form-row" id="nsTransferFromRow" style="display:none">
+          <div class="field full"><label>어느 분원에서 왔나요?</label>
+            <select id="nsTransferFrom">
+              <option value="">전 분원 선택…</option>
+              ${db.branches.filter(x=>x.id!==branchId).map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('')}
+            </select>
+          </div>
+        </div>
         <button class="btn primary" style="width:100%" onclick="addNewStudent()">신규생 등록</button>
       </div>
 
@@ -2194,9 +2262,32 @@ function renderStudentManagement(){
           <div class="field"><label>퇴원일</label><input id="wdDate" type="date" value="${today()}"></div>
           <div class="field"><label>사유 (선택)</label><input id="wdMemo" placeholder="예: 타지역 이사"></div>
         </div>
-        <label class="wd-transfer"><input type="checkbox" id="wdTransfer"> <span>전출 (다른 분원으로 이동) — 퇴원율에 반영하지 않음</span></label>
+<label class="wd-transfer"><input type="checkbox" id="wdTransfer" onchange="document.getElementById('wdTransferToRow').style.display=this.checked?'flex':'none'"> <span>전출 (다른 분원으로 이동) — 퇴원율에 반영하지 않음</span></label>
+        <div class="form-row" id="wdTransferToRow" style="display:none;margin-top:8px">
+          <div class="field full"><label>어느 분원으로 가나요? (본사 전입 대조용)</label>
+            <select id="wdTransferTo">
+              <option value="">전출 분원 선택…</option>
+              ${db.branches.filter(x=>x.id!==branchId).map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('')}
+            </select>
+          </div>
+        </div>
         <button class="btn" style="width:100%;border-color:var(--neg-soft);color:var(--neg)" onclick="withdrawStudent()">퇴원 처리</button>
       </div>
+    </div>
+
+    <div class="panel" style="margin-top:16px">
+      <div class="panel-head">
+        <div class="pi" style="background:var(--warn-soft);color:var(--warn)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8M21 3v5h-5M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16M8 16H3v5"/></svg>
+        </div>
+        <div><h3>퇴원생 상태 변경</h3></div>
+      </div>
+      <div class="pd">이미 퇴원·전출 처리한 학생의 상태를 바꿉니다. <b>전출했다가 실제론 타학원 퇴원</b>이면 일반 퇴원으로, <b>잘못 퇴원시켰으면</b> 재원 복귀로 되돌립니다.</div>
+      <div class="field full" style="margin-bottom:8px">
+        <label>퇴원·전출 학생 검색 (이름 또는 회원코드)</label>
+        <input id="wcSearch" placeholder="예: 김태양" autocomplete="off" oninput="renderWcResults()">
+      </div>
+      <div id="wcResults" class="wd-results"></div>
     </div>
 
     <div class="panel" style="margin-top:16px">
@@ -2724,12 +2815,16 @@ function addNewStudent(){
   let stu=db.students.find(s=>s.code===code);
   if(!stu){ stu={id:uid('st'),code,name,school:el('nsSchool').value.trim(),grade:el('nsGrade').value.trim()};
     db.students.push(stu); }
+const isTransferIn = el('nsTransferIn') ? el('nsTransferIn').checked : false;
+  const fromBranchId = isTransferIn && el('nsTransferFrom') ? el('nsTransferFrom').value : '';
+  const fromBranchName = fromBranchId ? (getBranch(fromBranchId)?.name||'') : '';
   db.semesterRecords.push({id:uid('rec'),studentId:stu.id,branchId,semesterId:semId,
     className,classLabel:classLbl,teacher,
-    note:'신규생',targetType:'HCMC',status:'active',origin:'new',enrollDate});
-  const nsMemo = (el('nsMemo')?el('nsMemo').value.trim():'') || '수동 등록';
+    note:isTransferIn?'전입':'신규생',targetType:'HCMC',status:'active',origin:'new',transferIn:isTransferIn,transferTo:fromBranchId||null,enrollDate});
+  const nsMemo = (el('nsMemo')?el('nsMemo').value.trim():'')
+    || (isTransferIn?(fromBranchName?`${fromBranchName}에서 전입`:'전입 (수동 등록)'):'수동 등록');
   db.studentMovements.push({id:uid('mv'),studentId:stu.id,branchId,semesterId:semId,type:'new',date:enrollDate,memo:nsMemo});
-  saveDB(); toast(`${name} 신규생 등록 완료`,'ok'); render();
+  saveDB(); toast(`${name} ${isTransferIn?'전입':'신규생'} 등록 완료`,'ok'); render();
 }
 
 /* 퇴원 처리 — 이름/코드 검색 결과 렌더 (동명이인 구분 위해 코드·반·담임 표시) */
@@ -2789,15 +2884,89 @@ function withdrawStudent(){
   if(!recId){ toast('학생을 검색해서 선택하세요','err'); return; }
   const rec=db.semesterRecords.find(r=>r.id===recId);
   if(!rec){ toast('학생을 다시 선택하세요','err'); return; }
-  const wdDate = el('wdDate').value || today();
+const wdDate = el('wdDate').value || today();
   const isTransfer = el('wdTransfer') ? el('wdTransfer').checked : false;
+  const toBranchId = isTransfer && el('wdTransferTo') ? el('wdTransferTo').value : '';
+  if(isTransfer && !toBranchId){ toast('전출 대상 분원을 선택하세요','err'); return; }
+  const toBranchName = toBranchId ? (getBranch(toBranchId)?.name||'') : '';
   rec.status='withdraw';
   rec.withdrawDate=wdDate;   // 레코드에도 퇴원일 저장 (월별 추적용)
   rec.transfer=isTransfer;   // 전출이면 퇴원율 계산에서 제외
+  rec.transferTo=toBranchId||null;  // 전출이면 도착 분원 id (본사 매칭용)
   const stu=getStudent(rec.studentId);
   db.studentMovements.push({id:uid('mv'),studentId:rec.studentId,branchId:rec.branchId,semesterId:rec.semesterId,
-    type:'withdraw',date:wdDate,memo:(isTransfer?'[전출] ':'')+(el('wdMemo').value.trim()||'퇴원 처리')});
-  saveDB(); toast(`${stu.name} ${isTransfer?'전출':'퇴원'} 처리 완료`,'ok'); render();
+    type:'withdraw',date:wdDate,memo:(isTransfer?`[전출→${toBranchName}] `:'')+(el('wdMemo').value.trim()||'퇴원 처리')});
+  saveDB(); toast(`${stu.name} ${isTransfer?`${toBranchName}로 전출`:'퇴원'} 처리 완료`,'ok'); render();
+}
+
+/* 퇴원·전출 학생 검색 (상태 변경용) */
+function renderWcResults(){
+  const branchId=session.branchId, semId=state.semId;
+  const q = (el('wcSearch').value||'').trim().toLowerCase();
+  const box = el('wcResults');
+  if(!q){ box.innerHTML=''; return; }
+  const matches = recordsOf(branchId, semId).filter(r=>{
+    if(r.status!=='withdraw') return false;  // 퇴원·전출 학생만
+    const s=getStudent(r.studentId); if(!s) return false;
+    return s.name.toLowerCase().includes(q) || (s.code||'').toLowerCase().includes(q);
+  }).sort((a,b)=>{
+    const sa=getStudent(a.studentId), sb=getStudent(b.studentId);
+    return (sa?sa.name:'').localeCompare(sb?sb.name:'','ko');
+  });
+  if(matches.length===0){ box.innerHTML=`<div class="wd-empty">퇴원·전출 학생 중 검색 결과가 없습니다</div>`; return; }
+  box.innerHTML = matches.slice(0,30).map(r=>{
+    const s=getStudent(r.studentId);
+    const badge = r.transfer
+      ? '<span class="status-badge" style="background:var(--warn-soft);color:var(--warn)">전출</span>'
+      : '<span class="status-badge withdraw">퇴원</span>';
+    return `<div class="wd-item" style="cursor:default">
+      <div class="wd-main"><span class="wd-name">${esc(s.name)}</span><span class="code-chip">${esc(s.code)}</span> ${badge}</div>
+      <div class="wd-meta">${esc(r.classLabel||r.className)} · ${esc(r.teacher)} 담임 · ${esc(r.withdrawDate||'')}</div>
+      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+        ${r.transfer
+          ? `<button class="btn sm" style="border-color:var(--neg-soft);color:var(--neg)" onclick="convertWithdrawType('${r.id}',false)">→ 일반 퇴원으로</button>`
+          : `<button class="btn sm" style="border-color:var(--warn-soft);color:var(--warn)" onclick="convertWithdrawType('${r.id}',true)">→ 전출로</button>`}
+        <button class="btn sm" style="border-color:var(--pos-soft);color:var(--pos)" onclick="restoreStudent('${r.id}')">재원 복귀</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+/* 전출 ↔ 일반 퇴원 전환 */
+function convertWithdrawType(recId, toTransfer){
+  const rec=db.semesterRecords.find(r=>r.id===recId);
+  if(!rec) return;
+  const s=getStudent(rec.studentId);
+  const label = toTransfer ? '전출' : '일반 퇴원';
+  openConfirm('퇴원 종류 변경',
+    `${s.name} (${s.code})을 ${label}(으)로 변경합니다.\n\n${toTransfer?'전출은 퇴원율 계산에서 제외됩니다.':'일반 퇴원은 퇴원율에 반영됩니다.'}`,
+    ()=>{
+      rec.transfer = toTransfer;
+      if(!toTransfer) rec.transferTo = null;  // 일반 퇴원이면 목적지 분원 정보 제거
+      // 이동이력 메모도 갱신
+      const mv = db.studentMovements.find(m=>m.studentId===rec.studentId && m.branchId===rec.branchId && m.semesterId===rec.semesterId && m.type==='withdraw');
+      if(mv){ mv.memo = (toTransfer?'[전출] ':'')+(mv.memo||'').replace(/^\[전출\]\s*/,''); }
+      showSaving('변경 중…');
+      saveDB().then(ok=>{ hideSaving(); closeModal();
+        toast(ok?`${s.name} ${label}(으)로 변경됨`:'저장 실패','ok'); render(); });
+    }, {yesLabel:'변경', danger:false});
+}
+/* 재원 복귀 — 잘못 퇴원시킨 학생 되돌리기 */
+function restoreStudent(recId){
+  const rec=db.semesterRecords.find(r=>r.id===recId);
+  if(!rec) return;
+  const s=getStudent(rec.studentId);
+  openConfirm('재원 복귀',
+    `${s.name} (${s.code})을 다시 재원 상태로 되돌립니다.\n\n퇴원·전출 기록이 취소되고 현재 재원생에 다시 포함됩니다.`,
+    ()=>{
+      rec.status = 'active';
+      rec.withdrawDate = null;
+      rec.transfer = false;
+      // 퇴원 이동이력 제거
+      db.studentMovements = db.studentMovements.filter(m=>!(m.studentId===rec.studentId && m.branchId===rec.branchId && m.semesterId===rec.semesterId && m.type==='withdraw'));
+      showSaving('복귀 중…');
+      saveDB().then(ok=>{ hideSaving(); closeModal();
+        toast(ok?`${s.name} 재원 복귀 완료`:'저장 실패','ok'); render(); });
+    }, {yesLabel:'재원 복귀', danger:false});
 }
 
 /* 담임 변경 — 반 선택 시 현재 담임 자동 표시 */
