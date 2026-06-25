@@ -2942,10 +2942,11 @@ function renderWcResults(){
     return `<div class="wd-item" style="cursor:default">
       <div class="wd-main"><span class="wd-name">${esc(s.name)}</span><span class="code-chip">${esc(s.code)}</span> ${badge}</div>
       <div class="wd-meta">${esc(r.classLabel||r.className)} · ${esc(r.teacher)} 담임 · ${esc(r.withdrawDate||'')}</div>
-      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
         ${r.transfer
           ? `<button class="btn sm" style="border-color:var(--neg-soft);color:var(--neg)" onclick="convertWithdrawType('${r.id}',false)">→ 일반 퇴원으로</button>`
           : `<button class="btn sm" style="border-color:var(--warn-soft);color:var(--warn)" onclick="convertWithdrawType('${r.id}',true)">→ 전출로</button>`}
+        <button class="btn sm" onclick="openEditWithdrawReason('${r.id}')">사유 수정</button>
         <button class="btn sm" style="border-color:var(--pos-soft);color:var(--pos)" onclick="restoreStudent('${r.id}')">재원 복귀</button>
       </div>
     </div>`;
@@ -3023,7 +3024,46 @@ function restoreStudent(recId){
         toast(ok?`${s.name} 재원 복귀 완료`:'저장 실패','ok'); render(); });
     }, {yesLabel:'재원 복귀', danger:false});
 }
+/* 퇴원/전출 사유 수정 — 이동이력 메모에서 [전출→분원] 표시는 보존하고 사유 부분만 교체 */
+function openEditWithdrawReason(recId){
+  const rec = db.semesterRecords.find(r=>r.id===recId);
+  if(!rec) return;
+  const s = getStudent(rec.studentId);
+  const mv = db.studentMovements.find(m=>m.studentId===rec.studentId && m.branchId===rec.branchId && m.semesterId===rec.semesterId && m.type==='withdraw');
+  // 현재 메모에서 [전출→…] 접두사 떼고 순수 사유만 뽑음
+  const rawMemo = (mv && mv.memo) || '';
+  const prefixMatch = rawMemo.match(/^(\[전출[^\]]*\]\s*)/);
+  const prefix = prefixMatch ? prefixMatch[1] : '';
+  let curReason = rawMemo.replace(/^\[전출[^\]]*\]\s*/,'');
+  if(curReason==='퇴원 처리') curReason = '';  // 기본 메모면 빈칸으로 보여줌
 
+  openModal(`
+    <div class="modal-head"><div><h3>퇴원 사유 수정</h3>
+      <div class="mh-sub">${esc(s.name)} (${esc(s.code)})${rec.transfer?' · 전출':''}</div></div>
+      <button class="modal-x" onclick="closeModal()">×</button></div>
+    <div class="modal-body">
+      <div class="field full"><label>퇴원${rec.transfer?'/전출':''} 사유</label>
+        <input id="ewReason" placeholder="예: 타지역 이사" value="${esc(curReason)}">
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeModal()">취소</button>
+      <button class="btn primary" id="ewSave">저장</button>
+    </div>`);
+  el('ewSave').onclick = ()=>{
+    const reason = el('ewReason').value.trim() || '퇴원 처리';
+    if(mv){
+      mv.memo = prefix + reason;
+    } else {
+      // 이동이력이 없으면 새로 만들어줌
+      db.studentMovements.push({id:uid('mv'),studentId:rec.studentId,branchId:rec.branchId,semesterId:rec.semesterId,
+        type:'withdraw',date:rec.withdrawDate||today(),memo:prefix+reason});
+    }
+    showSaving('사유 수정 중…');
+    saveDB().then(ok=>{ hideSaving(); closeModal();
+      toast(ok?`${s.name} 사유 수정됨`:'저장 실패','ok'); render(); });
+  };
+}
 /* 담임 변경 — 반 선택 시 현재 담임 자동 표시 */
 function onTcClassChange(){
   const sel = el('tcClass');
