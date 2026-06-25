@@ -2635,7 +2635,9 @@ function importRoster(file, branchId, semId){
       const classFull = rawClass;
       const classLbl = kind==='exam' ? rawClass : classLabel(rawClass);  // 내신반은 이름 그대로 표시
       const note = idx.note>=0 ? String(r[idx.note]||'').trim() : '';
-      const origin = /신규/.test(note)?'new' : /복귀/.test(note)?'return' : 'start';
+      // '복귀' 글자 있으면 복귀, 없고 '신규'만 있으면 신규. 둘 다 섞여 있어도 복귀 우선.
+      // (복귀생도 신규로 카운트되지만, 특이사항/배지엔 '복귀'로 구분 표시됨)
+      const origin = /복귀/.test(note)?'return' : (/신규/.test(note)?'new' : 'start');
       const targetType = (origin==='new'||origin==='return')?'HCMC':'MC';
       const teacher = String(r[idx.teacher]||'').trim() || '미배정';
       const school = idx.school>=0 ? String(r[idx.school]||'').trim() : '';
