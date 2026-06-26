@@ -3868,9 +3868,11 @@ function renderMsgCard(){
         <span>문자 미리보기</span>
         <button type="button" class="btn sm primary" onclick="copyMsg()">📋 복사</button>
       </div>
-      <textarea id="msgPreview" class="msg-preview" rows="16" readonly>${esc(buildCurrentMsg())}</textarea>
+      <textarea id="msgPreview" class="msg-preview" rows="16" readonly></textarea>
     </div>
-    <div class="msg-hint">왼쪽 신규생 정보를 입력하면 실시간으로 반영됩니다. 문법 교재가 분원과 다르면 직접 수정하세요.</div>`;
+<div class="msg-hint">왼쪽 신규생 정보를 입력하면 실시간으로 반영됩니다. 문법 교재가 분원과 다르면 직접 수정하세요.</div>`;
+  // DOM 다 그려진 뒤 미리보기 채움 (책 칸 자동값까지 확실히 반영)
+  refreshMsg();
 }
 function setMsgTab(k){ msgState.tab=k; renderMsgCard(); }
 /* 미리보기만 갱신 (부가입력 칸 포커스 유지 — 전체 리렌더 안 함) */
