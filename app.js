@@ -2253,7 +2253,20 @@ function renderStudentManagement(){
         </div>
         <div class="form-row">
           <div class="field"><label>학교</label><input id="nsSchool" placeholder="학교" oninput="refreshMsg()"></div>
-          <div class="field"><label>학년</label><input id="nsGrade" placeholder="학년" oninput="refreshMsg()"></div>
+          <div class="field"><label>학년</label>
+            <select id="nsGrade" onchange="refreshMsg()">
+              <option value="">학년 선택…</option>
+              <option value="초등1">초등1</option>
+              <option value="초등2">초등2</option>
+              <option value="초등3">초등3</option>
+              <option value="초등4">초등4</option>
+              <option value="초등5">초등5</option>
+              <option value="초등6">초등6</option>
+              <option value="중등1">중등1</option>
+              <option value="중등2">중등2</option>
+              <option value="중등3">중등3</option>
+            </select>
+          </div>
         </div>
         <div class="form-row">
           <div class="field full"><label>반 선택</label>
@@ -3619,7 +3632,7 @@ function buildEnrollMsg(f){
   const room = el('msgRoom')?el('msgRoom').value.trim():'';
   const timeRaw = el('msgClassTime')?el('msgClassTime').value.trim():'';
   const timeLine = [classTimeLabel(f.classLbl), timeRaw].filter(Boolean).join(' ');
-  const bagLine = msgState.bagGiven ? '' : '\n▶ 가방 배부 :  ';
+ const bagLine = msgState.bagGiven ? '' : '\n▶ 가방 배부 : 수업 첫날 배부예정입니다.';
   const busLine = msgState.busOn ? '\n▶ 차량 안내 : 이번주 중으로 안내 예정입니다.' : '';
   return `[ ${branchTagName()} - ${f.semShort} 신규 등록 및 입학 안내 ]
 
