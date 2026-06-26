@@ -2268,9 +2268,14 @@ function renderStudentManagement(){
             </select>
           </div>
         </div>
-        <div class="form-row">
-          <div class="field full"><label>반 선택</label>
-            <select id="nsClassSelect">
+<div class="form-row">
+          <div class="field full"><label>반 선택 (검색 가능 · 라벨이나 담임 이름으로)</label>
+            <input id="nsClassSearch" list="nsClassList" placeholder="반 검색 후 선택… (또는 '새 반')" autocomplete="off" oninput="onNsClassPick()">
+            <datalist id="nsClassList">
+              ${classList.map(c=>`<option value="${esc(c.label)} · ${esc(c.teacher)}">`).join('')}
+              <option value="+ 새 반 직접 입력">
+            </datalist>
+            <select id="nsClassSelect" style="display:none">
               <option value="">기존 반에서 선택…</option>
               ${classList.map(c=>`<option value="${esc(c.className)}" data-teacher="${esc(c.teacher)}">${esc(c.label)} · ${esc(c.teacher)}</option>`).join('')}
               <option value="__new__">+ 새 반 직접 입력</option>
@@ -3875,4 +3880,23 @@ function copyMsg(){
       ta.setAttribute('readonly','');
     }
   );
+}
+/* 반 검색 input에서 고른 라벨 → 숨은 select의 className 값으로 동기화 */
+function onNsClassPick(){
+  const search = el('nsClassSearch');
+  const sel = el('nsClassSelect');
+  if(!search || !sel) return;
+  const v = search.value.trim();
+  if(v==='+ 새 반 직접 입력'){
+    sel.value = '__new__';
+  } else {
+    let matched = '';
+    for(const opt of sel.options){
+      if(opt.value==='' || opt.value==='__new__') continue;
+      if(opt.textContent.trim()===v){ matched = opt.value; break; }
+    }
+    sel.value = matched;
+  }
+  el('nsNewClassRow').style.display = (sel.value==='__new__') ? 'flex' : 'none';
+  renderMsgCard();
 }
