@@ -2904,7 +2904,9 @@ const isTransferIn = el('nsTransferIn') ? el('nsTransferIn').checked : false;
   const nsMemo = (el('nsMemo')?el('nsMemo').value.trim():'')
     || (isTransferIn?(fromBranchName?`${fromBranchName}에서 전입`:'전입 (수동 등록)'):'수동 등록');
   db.studentMovements.push({id:uid('mv'),studentId:stu.id,branchId,semesterId:semId,type:'new',date:enrollDate,memo:nsMemo});
-  saveDB(); toast(`${name} ${isTransferIn?'전입':'신규생'} 등록 완료`,'ok'); render();
+// 등록한 학생 정보를 문자 카드에 복원하기 위해 저장 (리렌더 후에도 문자 유지)
+  msgState.locked = readNsForm();
+  saveDB(); toast(`${name} ${isTransferIn?'전입':'신규생'} 등록 완료 — 오른쪽에서 안내 문자를 복사하세요`,'ok'); render();
 }
 
 /* 퇴원 처리 — 이름/코드 검색 결과 렌더 (동명이인 구분 위해 코드·반·담임 표시) */
@@ -3586,6 +3588,8 @@ function branchPlainName(){
 
 /* 신규생 추가 폼에서 현재 입력값 읽어오기 (실시간) */
 function readNsForm(){
+  // 등록 직후 잠긴 값이 있으면 그걸 우선 사용 (폼은 비워졌어도 문자엔 방금 등록한 학생 유지)
+  if(msgState.locked) return msgState.locked;
   const csel = el('nsClassSelect');
   const pick = csel ? csel.value : '';
   let className='', classLbl='', teacher='', level='';
@@ -3865,6 +3869,8 @@ function renderMsgCard(){
 function setMsgTab(k){ msgState.tab=k; renderMsgCard(); }
 /* 미리보기만 갱신 (부가입력 칸 포커스 유지 — 전체 리렌더 안 함) */
 function refreshMsg(){
+  // 폼에 새로 입력하기 시작하면 잠금 해제 (다음 학생 문자로 전환)
+  msgState.locked = null;
   const pv = el('msgPreview');
   if(pv) pv.value = buildCurrentMsg();
 }
