@@ -64,8 +64,6 @@ function confirmDeleteSemester(){
 
   const stuCnt = (db.semesterRecords||[]).filter(r=>r.semesterId===semId && r.branchId===branchId).length;
   const hisCnt = (db.counselingHistories||[]).filter(c=>c.semesterId===semId && c.branchId===branchId).length;
-  const stuCnt = (db.semesterRecords||[]).filter(r=>r.semesterId===semId && r.branchId===branchId).length;
-  const hisCnt = (db.counselingHistories||[]).filter(c=>c.semesterId===semId && c.branchId===branchId).length;
 
   // 빈 학기(이 분원 데이터 없음) → 학기 목록에서 제거 시도
   if(stuCnt===0 && hisCnt===0){
