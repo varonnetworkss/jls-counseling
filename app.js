@@ -59,7 +59,11 @@ function confirmDeleteSemester(){
   const branchId = session.branchId;
   if(!branchId){ toast('분원 계정만 삭제할 수 있습니다','err'); return; }
   const b = getBranch(branchId);
+// 지난 학기는 데이터 유무와 상관없이 삭제 잠금 (빈 미래 학기 제거는 허용)
+  if(isPastSemester(semId)){ lockedPastToast(); return; }
 
+  const stuCnt = (db.semesterRecords||[]).filter(r=>r.semesterId===semId && r.branchId===branchId).length;
+  const hisCnt = (db.counselingHistories||[]).filter(c=>c.semesterId===semId && c.branchId===branchId).length;
   const stuCnt = (db.semesterRecords||[]).filter(r=>r.semesterId===semId && r.branchId===branchId).length;
   const hisCnt = (db.counselingHistories||[]).filter(c=>c.semesterId===semId && c.branchId===branchId).length;
 
@@ -308,6 +312,23 @@ function clearSession(){ session=null; sessionStorage.removeItem(SESSION_KEY); }
 function getBranch(id){ return db.branches.find(b=>b.id===id); }
 function getStudent(id){ return db.students.find(s=>s.id===id); }
 function currentSemId(){ return state.semId; }
+/* 지난 학기인지 — 보고 있는 학기가 오늘 기준 현재 학기보다 과거면 true.
+   과거 학기는 삭제·전체명단 업로드 잠금 (상담이력 추가 업로드는 허용).
+   미래 학기(잘못 만든 다음 학기)는 과거가 아니므로 잠그지 않음. */
+function semRank(id){
+  const m=String(id).match(/sem_(\d+)_(\w+)/); if(!m) return 0;
+  const o={spring:0,summer:1,fall:2,winter:3}; return parseInt(m[1],10)*10+(o[m[2]]||0);
+}
+function isPastSemester(semId){
+  const cur = currentSemester();
+  return semRank(semId) < semRank(cur.id);
+}
+/* 지난 학기 보호 안내 팝업 */
+function lockedPastToast(){
+  openConfirm('지난 학기는 잠겨 있습니다',
+    '이미 마감된 지난 학기 데이터입니다.\n\n삭제와 전체명단 업로드는 막아두었습니다. (실수로 지난 장부가 날아가는 걸 방지)\n\n퇴원 처리·상담이력 추가 업로드는 현재 학기로 전환하지 않아도 가능합니다.',
+    ()=>{ closeModal(); }, {yesLabel:'확인', danger:false});
+}
 
 /* 한 학기 한 분원의 학기레코드 — 정규반(regular)만. 내신반(exam)은 인원 집계 전부 제외 */
 function recordsOf(branchId, semId){
@@ -2111,6 +2132,7 @@ function renderHistoryBatches(branchId, semId){
 
 /* 특정 업로드 묶음만 삭제 — 그 batchId의 상담만 제거 */
 function confirmDeleteBatch(batchId){
+  if(isPastSemester(state.semId)){ lockedPastToast(); return; }
   const x = (db.uploadBatches||[]).find(b=>b.id===batchId);
   if(!x) return;
   const live = db.counselingHistories.filter(c=>c.batchId===batchId).length;
@@ -2160,6 +2182,7 @@ function renderDelResults(){
   }).join('');
 }
 function confirmDeleteOneStudent(recId){
+  if(isPastSemester(state.semId)){ lockedPastToast(); return; }
   const rec=db.semesterRecords.find(r=>r.id===recId);
   if(!rec) return;
   const s=getStudent(rec.studentId);
@@ -2177,6 +2200,7 @@ function confirmDeleteOneStudent(recId){
 /* 전체명단 삭제 (상담이력은 유지) */
 function confirmClearRoster(){
   const branchId=session.branchId, semId=state.semId;
+  if(isPastSemester(semId)){ lockedPastToast(); return; }
   const cnt = recordsOf(branchId, semId).length;
   openConfirm('전체명단 삭제',
     `이 분원·학기의 학생 명단 ${cnt}명이 삭제됩니다. 상담이력 기록 자체는 남지만, 명단이 없으면 상담률은 계산되지 않습니다. 보통은 새 명단을 다시 업로드하기 직전에만 사용하세요.`,
@@ -2473,6 +2497,7 @@ function saveEditStudent(recId){
 }
 /* 수동 등록 학생 삭제 — 학기레코드 + 이동이력 제거 (상담이력은 보존) */
 function confirmDeleteStudent(recId){
+  if(isPastSemester(state.semId)){ lockedPastToast(); return; }
   const rec = db.semesterRecords.find(r=>r.id===recId);
   if(!rec) return;
   const s = getStudent(rec.studentId);
@@ -2610,6 +2635,7 @@ function classLabel(raw){
 }
 
 function importRoster(file, branchId, semId){
+  if(isPastSemester(semId)){ lockedPastToast(); return; }
   readTable(file, async rows=>{
     if(rows.length<2){ toast('데이터가 없습니다','err'); return; }
     const header = rows[0].map(h=>String(h).trim());
