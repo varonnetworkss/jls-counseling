@@ -2269,12 +2269,11 @@ function renderStudentManagement(){
           </div>
         </div>
 <div class="form-row">
-          <div class="field full"><label>반 선택 (검색 가능 · 라벨이나 담임 이름으로)</label>
-            <input id="nsClassSearch" list="nsClassList" placeholder="반 검색 후 선택… (또는 '새 반')" autocomplete="off" oninput="onNsClassPick()">
-            <datalist id="nsClassList">
-              ${classList.map(c=>`<option value="${esc(c.label)} · ${esc(c.teacher)}">`).join('')}
-              <option value="+ 새 반 직접 입력">
-            </datalist>
+          <div class="field full"><label>반 선택 (검색 가능 · 레벨·반명·담임으로)</label>
+            <input id="nsClassSearch" placeholder="반 검색… (예: PA2, 월수금, 담임명)" autocomplete="off"
+              oninput="renderNsClassResults()" onfocus="renderNsClassResults()">
+            <div id="nsClassResults" class="wd-results" style="display:none"></div>
+            <div id="nsClassPicked" class="wd-picked" style="display:none"></div>
             <select id="nsClassSelect" style="display:none">
               <option value="">기존 반에서 선택…</option>
               ${classList.map(c=>`<option value="${esc(c.className)}" data-teacher="${esc(c.teacher)}">${esc(c.label)} · ${esc(c.teacher)}</option>`).join('')}
@@ -2437,6 +2436,13 @@ function renderStudentManagement(){
       renderMsgCard();  // 반 바뀌면 레벨·교재·담임 자동 반영 위해 카드 다시 그림
     };
   }
+// 반 검색 결과 박스: 바깥 클릭 시 닫기
+  document.addEventListener('click', (e)=>{
+    const wrap = el('nsClassResults');
+    const search = el('nsClassSearch');
+    if(!wrap || !search) return;
+    if(e.target!==search && !wrap.contains(e.target)) wrap.style.display='none';
+  });
   // 문자 카드 최초 렌더
   renderMsgCard();
 }
@@ -3887,22 +3893,71 @@ function copyMsg(){
     }
   );
 }
-/* 반 검색 input에서 고른 라벨 → 숨은 select의 className 값으로 동기화 */
-function onNsClassPick(){
+/* 반 검색 결과 렌더 — 타이핑 즉시 필터링 (레벨·반명·담임 다 검색) */
+function renderNsClassResults(){
   const search = el('nsClassSearch');
+  const box = el('nsClassResults');
   const sel = el('nsClassSelect');
-  if(!search || !sel) return;
-  const v = search.value.trim();
-  if(v==='+ 새 반 직접 입력'){
-    sel.value = '__new__';
-  } else {
-    let matched = '';
-    for(const opt of sel.options){
-      if(opt.value==='' || opt.value==='__new__') continue;
-      if(opt.textContent.trim()===v){ matched = opt.value; break; }
-    }
-    sel.value = matched;
+  if(!search || !box || !sel) return;
+  const q = search.value.trim().toLowerCase();
+  // 숨은 select의 option들을 후보로 사용 (className=value, 라벨=textContent)
+  const opts = [];
+  for(const opt of sel.options){
+    if(opt.value==='' || opt.value==='__new__') continue;
+    opts.push({ className:opt.value, label:opt.textContent.trim() });
   }
-  el('nsNewClassRow').style.display = (sel.value==='__new__') ? 'flex' : 'none';
+  // 검색어로 필터 (라벨에 레벨·반명·담임 다 들어있어서 한 번에 걸림)
+  const filtered = q ? opts.filter(o=> o.label.toLowerCase().includes(q)) : opts;
+  let rows = filtered.slice(0,40).map(o=>
+    `<div class="wd-item" onclick="pickNsClass('${esc(o.className).replace(/'/g,"\\'")}')">
+      <div class="wd-main"><span class="wd-name">${esc(o.label)}</span></div>
+    </div>`).join('');
+  // 맨 아래 '새 반 직접 입력' 항상 노출
+  rows += `<div class="wd-item" onclick="pickNsClass('__new__')" style="border-top:1px solid var(--line)">
+      <div class="wd-main"><span class="wd-name" style="color:var(--brand)">＋ 새 반 직접 입력</span></div>
+    </div>`;
+  box.innerHTML = filtered.length===0 && q
+    ? `<div class="wd-empty">검색 결과 없음</div>` + rows
+    : rows;
+  box.style.display = 'block';
+}
+/* 검색 결과에서 반 선택 → 숨은 select 값 맞추고 확정 표시 */
+function pickNsClass(className){
+  const sel = el('nsClassSelect');
+  const search = el('nsClassSearch');
+  const box = el('nsClassResults');
+  const picked = el('nsClassPicked');
+  if(!sel) return;
+  sel.value = className;
+  if(box) box.style.display = 'none';
+  if(className==='__new__'){
+    if(search) search.value = '';
+    el('nsNewClassRow').style.display = 'flex';
+    if(picked) picked.style.display = 'none';
+  } else {
+    el('nsNewClassRow').style.display = 'none';
+    // 고른 반 라벨 찾아서 확정 표시
+    let label = '';
+    for(const opt of sel.options){ if(opt.value===className){ label=opt.textContent.trim(); break; } }
+    if(search) search.value = '';
+    if(picked){
+      picked.style.display = 'block';
+      picked.innerHTML = `<div class="wd-picked-card">
+        <div><div class="wd-picked-name">선택된 반: <b>${esc(label)}</b></div></div>
+        <button class="btn sm" onclick="clearNsClass()">변경</button>
+      </div>`;
+    }
+  }
+  renderMsgCard();
+}
+/* 반 선택 취소 → 다시 검색 가능하게 */
+function clearNsClass(){
+  const sel = el('nsClassSelect');
+  if(sel) sel.value = '';
+  const picked = el('nsClassPicked');
+  if(picked){ picked.style.display='none'; picked.innerHTML=''; }
+  el('nsNewClassRow').style.display = 'none';
+  const search = el('nsClassSearch');
+  if(search){ search.value=''; search.focus(); }
   renderMsgCard();
 }
