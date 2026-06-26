@@ -2238,6 +2238,7 @@ function renderStudentManagement(){
       <div class="sub">${esc(b.name)} · ${esc(db.semesters.find(s=>s.id===semId).name)} · 신규생 추가와 퇴원 처리를 합니다</div>
     </div>
     <div class="dm-grid">
+      <!-- ===== 왼쪽 위: 신규생 추가 ===== -->
       <div class="panel">
         <div class="panel-head">
           <div class="pi" style="background:var(--brand-soft);color:var(--brand)">
@@ -2247,12 +2248,12 @@ function renderStudentManagement(){
         </div>
         <div class="pd">학기 중 입학한 학생을 수동 등록합니다. 신규생은 HC1·HC2 대상이며, MC는 입학일 기준으로 그 달부터의 회차만 대상이 됩니다. (예: 여름학기 7월 입학 → MC1 제외, MC2·MC3 대상)</div>
         <div class="form-row">
-          <div class="field"><label>학생명</label><input id="nsName" placeholder="이름"></div>
+          <div class="field"><label>학생명</label><input id="nsName" placeholder="이름" oninput="refreshMsg()"></div>
           <div class="field"><label>회원코드</label><input id="nsCode" placeholder="코드"></div>
         </div>
         <div class="form-row">
-          <div class="field"><label>학교</label><input id="nsSchool" placeholder="학교"></div>
-          <div class="field"><label>학년</label><input id="nsGrade" placeholder="학년"></div>
+          <div class="field"><label>학교</label><input id="nsSchool" placeholder="학교" oninput="refreshMsg()"></div>
+          <div class="field"><label>학년</label><input id="nsGrade" placeholder="학년" oninput="refreshMsg()"></div>
         </div>
         <div class="form-row">
           <div class="field full"><label>반 선택</label>
@@ -2264,11 +2265,11 @@ function renderStudentManagement(){
           </div>
         </div>
         <div class="form-row" id="nsNewClassRow" style="display:none">
-          <div class="field"><label>새 반명 (엑셀과 동일하게)</label><input id="nsClass" placeholder="예: [DSC2]SU1/MWF/DSC2/H"></div>
-          <div class="field"><label>담임명</label><input id="nsTeacher" placeholder="담임"></div>
+          <div class="field"><label>새 반명 (엑셀과 동일하게)</label><input id="nsClass" placeholder="예: [DSC2]SU1/MWF/DSC2/H" oninput="refreshMsg()"></div>
+          <div class="field"><label>담임명</label><input id="nsTeacher" placeholder="담임" oninput="refreshMsg()"></div>
         </div>
         <div class="form-row">
-          <div class="field"><label>입학일 (등원일)</label><input id="nsDate" type="date"></div>
+          <div class="field"><label>입학일 (등원일)</label><input id="nsDate" type="date" oninput="refreshMsg()"></div>
           <div class="field"><label>메모 (선택)</label><input id="nsMemo" placeholder="예: 운정1에서 전입"></div>
         </div>
         <label class="wd-transfer" style="margin-bottom:10px"><input type="checkbox" id="nsTransferIn" onchange="document.getElementById('nsTransferFromRow').style.display=this.checked?'flex':'none'"> <span>전입 (다른 분원에서 옴) — 신규생과 분리 집계</span></label>
@@ -2283,6 +2284,19 @@ function renderStudentManagement(){
         <button class="btn primary" style="width:100%" onclick="addNewStudent()">신규생 등록</button>
       </div>
 
+      <!-- ===== 오른쪽 위: 신규생 문자 ===== -->
+      <div class="panel">
+        <div class="panel-head">
+          <div class="pi" style="background:var(--brand-soft);color:var(--brand)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          </div>
+          <div><h3>신규생 안내 문자</h3></div>
+        </div>
+        <div class="pd">왼쪽에서 신규생 정보를 입력하면 문자가 실시간으로 채워집니다. 탭을 골라 복사하세요. 입력값은 저장되지 않습니다.</div>
+        <div id="msgCardBody"></div>
+      </div>
+
+      <!-- ===== 왼쪽 아래: 퇴원 처리 ===== -->
       <div class="panel">
         <div class="panel-head">
           <div class="pi" style="background:var(--neg-soft);color:var(--neg)">
@@ -2302,7 +2316,7 @@ function renderStudentManagement(){
           <div class="field"><label>퇴원일</label><input id="wdDate" type="date" value="${today()}"></div>
           <div class="field"><label>사유 (선택)</label><input id="wdMemo" placeholder="예: 타지역 이사"></div>
         </div>
-<label class="wd-transfer"><input type="checkbox" id="wdTransfer" onchange="document.getElementById('wdTransferToRow').style.display=this.checked?'flex':'none'"> <span>전출 (다른 분원으로 이동) — 퇴원율에 반영하지 않음</span></label>
+        <label class="wd-transfer"><input type="checkbox" id="wdTransfer" onchange="document.getElementById('wdTransferToRow').style.display=this.checked?'flex':'none'"> <span>전출 (다른 분원으로 이동) — 퇴원율에 반영하지 않음</span></label>
         <div class="form-row" id="wdTransferToRow" style="display:none;margin-top:8px">
           <div class="field full"><label>어느 분원으로 가나요? (본사 전입 대조용)</label>
             <select id="wdTransferTo">
@@ -2313,21 +2327,22 @@ function renderStudentManagement(){
         </div>
         <button class="btn" style="width:100%;border-color:var(--neg-soft);color:var(--neg)" onclick="withdrawStudent()">퇴원 처리</button>
       </div>
-    </div>
 
-    <div class="panel" style="margin-top:16px">
-      <div class="panel-head">
-        <div class="pi" style="background:var(--warn-soft);color:var(--warn)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8M21 3v5h-5M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16M8 16H3v5"/></svg>
+      <!-- ===== 오른쪽 아래: 퇴원생 상태 변경 ===== -->
+      <div class="panel">
+        <div class="panel-head">
+          <div class="pi" style="background:var(--warn-soft);color:var(--warn)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8M21 3v5h-5M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16M8 16H3v5"/></svg>
+          </div>
+          <div><h3>퇴원생 상태 변경</h3></div>
         </div>
-        <div><h3>퇴원생 상태 변경</h3></div>
+        <div class="pd">이미 퇴원·전출 처리한 학생의 상태를 바꿉니다. <b>전출했다가 실제론 타학원 퇴원</b>이면 일반 퇴원으로, <b>잘못 퇴원시켰으면</b> 재원 복귀로 되돌립니다.</div>
+        <div class="field full" style="margin-bottom:8px">
+          <label>퇴원·전출 학생 검색 (이름 또는 회원코드)</label>
+          <input id="wcSearch" placeholder="예: 김태양" autocomplete="off" oninput="renderWcResults()">
+        </div>
+        <div id="wcResults" class="wd-results"></div>
       </div>
-      <div class="pd">이미 퇴원·전출 처리한 학생의 상태를 바꿉니다. <b>전출했다가 실제론 타학원 퇴원</b>이면 일반 퇴원으로, <b>잘못 퇴원시켰으면</b> 재원 복귀로 되돌립니다.</div>
-      <div class="field full" style="margin-bottom:8px">
-        <label>퇴원·전출 학생 검색 (이름 또는 회원코드)</label>
-        <input id="wcSearch" placeholder="예: 김태양" autocomplete="off" oninput="renderWcResults()">
-      </div>
-      <div id="wcResults" class="wd-results"></div>
     </div>
 
     <div class="panel" style="margin-top:16px">
@@ -2396,13 +2411,16 @@ function renderStudentManagement(){
       </div>
     </div>`;
 
-  // 반 선택 드롭다운: '새 반 직접 입력' 고르면 입력칸 표시
+  // 반 선택 드롭다운: '새 반 직접 입력' 고르면 입력칸 표시 + 문자 실시간 갱신
   const csel = el('nsClassSelect');
   if(csel){
     csel.onchange = ()=>{
       el('nsNewClassRow').style.display = csel.value==='__new__' ? 'flex' : 'none';
+      renderMsgCard();  // 반 바뀌면 레벨·교재·담임 자동 반영 위해 카드 다시 그림
     };
   }
+  // 문자 카드 최초 렌더
+  renderMsgCard();
 }
 
 /* 수동 등록 학생 목록 (수정/삭제) — 학생관리에서 직접 추가한 신규생만 */
@@ -3488,3 +3506,360 @@ function confirmReset(){
    부트스트랩 실행 (반드시 파일 맨 끝, 단 한 번)
    ============================================================================ */
 init();
+/* ============================================================================
+   ★ 신규생 안내 문자 생성 (4종: 신규등록 / Q앱 / 차량쌤 / 담임쌤)
+   ============================================================================ */
+
+/* Chess(체스) 레벨 → 교재 자동 매핑. 분원마다 문법책 다를 수 있어 수정 가능(입력칸).
+   DSD1부터는 "문법책 + (레벨)포트폴리오" 형태. */
+const CHESS_BOOKS = {
+  DSA1:'Vocabulary Mentor Joy Start 1',
+  DSA2:'Vocabulary Mentor Joy Start 2',
+  DSB1:'Very Easy Writing 1',
+  DSB2:'Grammar Mentor Joy Pre',
+  DSC1:'Grammar Mentor Joy Early Start 1',
+  DSC2:'Grammar Mentor Joy Early Start 2',
+  DSD1:'Grammar Mentor Joy Start 1',
+  DSD2:'Grammar Mentor Joy Start 2',
+  LSA1:'Grammar Mentor Joy 1',
+  LSA2:'Grammar Mentor Joy 2',
+  LSB1:'Grammar Mentor Joy 3',
+  LSB2:'Grammar Mentor Joy 4',
+  LSC1:'Grammar Joy Plus 1',
+  LSC2:'Grammar Joy Plus 2',
+  LSD1:'제대로 영작문1',
+  LSD2:'Grammar Joy Plus 3',
+  MSA1:'제대로 영작문2',
+  MSA2:'Grammar Joy Plus 4',
+  MSB1:'제대로 영작문3',
+  MSB2:'제대로 영작문4',
+};
+/* DSD1부터 포트폴리오 추가 — 레벨 순서상 DSD1 이상이면 포트폴리오 붙음 */
+const CHESS_PORTFOLIO_FROM = ['DSD1','DSD2','LSA1','LSA2','LSB1','LSB2','LSC1','LSC2','LSD1','LSD2','MSA1','MSA2','MSB1','MSB2'];
+/* 레벨코드로 체스 교재 문자열 생성. 매핑에 있으면 자동, 없으면 빈 문자열(=에이스 등은 수기). */
+function chessBookFor(level){
+  const lv = String(level||'').toUpperCase();
+  const book = CHESS_BOOKS[lv];
+  if(!book) return '';
+  if(CHESS_PORTFOLIO_FROM.includes(lv)) return `${book} + ${lv} 포트폴리오`;
+  return book;
+}
+
+/* 신규생 문자 상태 — 폼 입력값 + 문자카드 부가입력값을 모아두는 메모리(저장 안 함) */
+const msgState = {
+  tab:'enroll',          // enroll | qapp | bus | homeroom
+  busRide:'round',       // round | go | come | none(담임용 X)
+  bagGiven:false,        // 가방 받음 → 신규등록 문자에서 문구 삭제
+  busOn:false,           // 차량 탑승(신규등록 문자용)
+  bookStatus:'전달완료',  // 담임쌤 교재 상태 드롭다운
+};
+
+/* 현재 분원명에 "JLS" 붙인 제목용 분원명 (예: 서수원 → 서수원JLS) */
+function branchTagName(){
+  const b = getBranch(session.branchId);
+  let nm = b ? b.name : '';
+  nm = nm.replace(/분원$/,'').replace(/JLS/gi,'').trim();  // "서수원분원"/"서수원" → "서수원"
+  return nm + 'JLS';
+}
+function branchPlainName(){
+  const b = getBranch(session.branchId);
+  return b ? b.name : '';
+}
+
+/* 신규생 추가 폼에서 현재 입력값 읽어오기 (실시간) */
+function readNsForm(){
+  const csel = el('nsClassSelect');
+  const pick = csel ? csel.value : '';
+  let className='', classLbl='', teacher='', level='';
+  const branchId = session.branchId, semId = state.semId;
+  if(pick && pick!=='__new__'){
+    const ref = activeRecordsOf(branchId, semId).find(r=>r.className===pick);
+    className = pick;
+    classLbl = (ref && ref.classLabel) || classLabel(pick) || pick;
+    teacher = (ref && ref.teacher) || '';
+    level = classLevel(pick);
+  } else if(pick==='__new__'){
+    className = (el('nsClass')?el('nsClass').value.trim():'') ;
+    classLbl = classLabel(className) || className;
+    teacher = (el('nsTeacher')?el('nsTeacher').value.trim():'');
+    level = classLevel(className);
+  }
+  const semName = (db.semesters.find(s=>s.id===semId)||{}).name || '';
+  // "2026년 여름학기" → "여름학기"만
+  const semShort = semName.replace(/^\d+년\s*/,'');
+  return {
+    name: el('nsName')?el('nsName').value.trim():'',
+    school: el('nsSchool')?el('nsSchool').value.trim():'',
+    grade: el('nsGrade')?el('nsGrade').value.trim():'',
+    date: el('nsDate')?el('nsDate').value:'',
+    className, classLbl, teacher, level,
+    semShort,
+    isReturn: false,  // 수동 신규는 기본 신규생 (복귀 구분 필요시 추후)
+  };
+}
+/* "2026-06-01" → "6/1(월)" 형태 */
+function fmtKDate(iso){
+  if(!iso) return '';
+  const m = String(iso).match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if(!m) return iso;
+  const d = new Date(parseInt(m[1]),parseInt(m[2])-1,parseInt(m[3]));
+  const wk = ['일','월','화','수','목','금','토'][d.getDay()];
+  return `${parseInt(m[2])}/${parseInt(m[3])}(${wk})`;
+}
+/* 반 라벨에서 "월수금 1부" 부분만 (· 앞부분) */
+function classTimeLabel(classLbl){
+  if(!classLbl) return '';
+  const parts = classLbl.split('·');
+  return parts[0] ? parts[0].trim() : '';
+}
+
+/* ===== 문자 4종 본문 생성 ===== */
+function buildEnrollMsg(f){
+  const fee = el('msgFee')?el('msgFee').value.trim():'';
+  const room = el('msgRoom')?el('msgRoom').value.trim():'';
+  const timeRaw = el('msgClassTime')?el('msgClassTime').value.trim():'';
+  const timeLine = [classTimeLabel(f.classLbl), timeRaw].filter(Boolean).join(' ');
+  const bagLine = msgState.bagGiven ? '' : '\n▶ 가방 배부 :  ';
+  const busLine = msgState.busOn ? '\n▶ 차량 안내 : 이번주 중으로 안내 예정입니다.' : '';
+  return `[ ${branchTagName()} - ${f.semShort} 신규 등록 및 입학 안내 ]
+
+안녕하세요? ${f.name||'ㅇㅇㅇ'}학생 학부모님.
+${fmtKDate(f.date)||'(등원일)'}부터 시작하는 ${f.semShort} 등록 확정 및 준비사항 안내드립니다. 
+# 수업정보 안내
+▶ 수업시간 : ${timeLine}
+▶ 레벨 : ${f.level||''}
+▶ 수강료 : ${fee}
+▶ 담임선생님: ${f.teacher||''}
+▶ 강의실: ${room}
+
+ 
+# 학기 시작 전 진행되어야 하는 사항
+1. 정상어학원 사이트 가입
+- 홈페이지에 학부모님이 먼저 가입해주세요.(www.gojls.com)
+- 학부모님 가입 후 자녀추가하여 등록해 주세요. 학부모님 아이디로 로그인 하면 교재구매, 수강료 결제 가능합니다. 
+- 학생 아이디는 과제시 필요합니다.
+2. 교재 구매
+- 정상어학원 홈페이지에서만 구매가능하며 집으로 배송됩니다.  
+- 학부모 아이디로 로그인 후 '반 교재' 탭에서 배정된 교재 전부를 구매해 주시면 됩니다.
+▶ 수강료 결제 
+- 현장 결제 : 카드사 교육비 할인 카드는 현장결제시 적용됩니다.
+- 온라인 결제 : www.gojls.com 정상어학원 사이트에서 학부모 아이디로 로그인 후 교육비 결제 가능 합니다. ${bagLine}${busLine}
+▶ 담임선생님 인사 : 최대한 빠르게 연락드릴 예정입니다.
+추가 문의사항은 학원으로 연락주시면 자세히 안내드리겠습니다. 
+감사합니다.`;
+}
+
+function buildQappMsg(f){
+  return `[ ${branchTagName()} - 학습관리Q(큐) 앱 설치 ]
+
+안녕하세요? ${f.name||'(학생명)'}학생&학부모님. 
+${branchPlainName()} 정상어학원입니다.
+
+초등부 단어시험, 문법 시험,CHAT / 중등부 단어시험, 문법 시험 결과를 '학습관리Q(큐)' 앱을 통해 확인하실 수 있는 서비스가 제공됩니다
+
+■ 학습관리Q(큐) 앱 소개
+학습관리Q(큐)는 영어 학습의 핵심인 단어와 문법 학습 현황을 학부모님과 학생이 더욱 쉽게 확인할 수 있는 앱 서비스입니다.
+* 학생 및 학부모님 모두 꼭 설치하셔서 사용해 주세요.
+
+■ 설치 방법
+1) 플레이스토어에 '학습관리 Q'검색
+2) 다운로드 후 휴대폰 인증하여 로그인
+
+■ 앱 기능
+1) 학생의 학기별 단어 시험과 문법 시험 결과 확인 (개별/누적 현황)
+2) 단어 시험 또는 문법 시험의 재시험 예약 및 알림 (미응시 포함)
+3) 학기말평가, 영어능력평가, 수능모의고사, DT 결과 제공
+정상어학원은 더 편리하고 세밀한 관리로 학생들의 영어 학습을 정상으로 이끌어갑니다. 
+기타 문의사항은 학원으로 연락 부탁드립니다.
+감사합니다.`;
+}
+
+function buildBusMsg(f){
+  const stop = el('msgBusStop')?el('msgBusStop').value.trim():'';
+  const phone = el('msgPhone')?el('msgPhone').value.trim():'';
+  const timeRaw = el('msgClassTime')?el('msgClassTime').value.trim():'';
+  const timeLine = [classTimeLabel(f.classLbl), timeRaw].filter(Boolean).join(' ');
+  const schoolGrade = [f.school, f.grade].filter(Boolean).join(' ');
+  const who = f.isReturn ? '복귀생' : '신규생';
+  let note = `${fmtKDate(f.date)||'(등원일)'}부터 등원하는 ${who}입니다.`;
+  if(msgState.busRide==='go') note += ' 등원만 탑승합니다.';
+  else if(msgState.busRide==='come') note += ' 하원만 탑승합니다.';
+  return `※ 차량 전달 
+${f.name||'(학생명)'}(${schoolGrade}) 
+▶탑승장소: ${stop}
+▶시간 : ${timeLine}
+▶학부모님 : ${phone}
+▶등원일 : ${fmtKDate(f.date)}
+▶특이사항: ${note}`;
+}
+
+function buildHomeroomMsg(f){
+  const stop = el('msgBusStop')?el('msgBusStop').value.trim():'';
+  const bookInput = el('msgBook')?el('msgBook').value.trim():'';
+  const bookStatusSel = el('msgBookStatus')?el('msgBookStatus').value:'전달완료';
+  const bookStatusCustom = el('msgBookStatusCustom')?el('msgBookStatusCustom').value.trim():'';
+  const status = (bookStatusSel==='__custom__') ? bookStatusCustom : bookStatusSel;
+  const bookLine = bookInput ? `${bookInput} ${status}` : status;
+  const schoolGrade = [f.school, f.grade].filter(Boolean).join(' ');
+  const who = f.isReturn ? '복귀생' : '신규생';
+  // 차량 줄
+  let busLine;
+  if(msgState.busRide==='none') busLine = 'X';
+  else {
+    const rideTxt = {round:'왕복', go:'등원만', come:'하원만'}[msgState.busRide]||'왕복';
+    busLine = stop ? `${rideTxt} / ${stop}` : rideTxt;
+  }
+  const lvl = f.level ? `${classTimeLabel(f.classLbl)} ${f.level}`.trim() : (f.classLbl||'');
+  return `[${who}]
+1.${f.name||'(학생명)'}(${schoolGrade})
+2.${lvl}
+3.등원일:${fmtKDate(f.date)}
+4.교재구매:구매예정
+5.차량:${busLine}
+6.HC:전화 부탁드립니다.
+7.가방:${msgState.bagGiven?'O':'X'}
+8.문법책/지내수: ${bookLine}
+${f.teacher||'ㅇㅇㅇ'}선생님 신규 등록하였습니다. 전화 부탁드립니다.감사합니다.`;
+}
+
+/* 현재 탭의 문자 본문 생성 */
+function buildCurrentMsg(){
+  const f = readNsForm();
+  if(msgState.tab==='enroll') return buildEnrollMsg(f);
+  if(msgState.tab==='qapp') return buildQappMsg(f);
+  if(msgState.tab==='bus') return buildBusMsg(f);
+  if(msgState.tab==='homeroom') return buildHomeroomMsg(f);
+  return '';
+}
+
+/* 탭별 부가입력 필드 HTML */
+function msgExtraFields(){
+  const tab = msgState.tab;
+  const lvl = classLevel((el('nsClassSelect')&&el('nsClassSelect').value)||'') || '';
+  if(tab==='enroll'){
+    return `
+      <div class="form-row">
+        <div class="field"><label>수업시간 (반명 뒤 시간)</label><input id="msgClassTime" placeholder="예: 14:30~16:10" oninput="refreshMsg()"></div>
+        <div class="field"><label>수강료</label><input id="msgFee" placeholder="예: 250,000원" oninput="refreshMsg()"></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>강의실</label><input id="msgRoom" placeholder="예: 201호" oninput="refreshMsg()"></div>
+        <div class="field"></div>
+      </div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin:4px 0 10px">
+        <label class="msg-chk"><input type="checkbox" id="msgBag" onchange="msgState.bagGiven=this.checked;refreshMsg()"> 가방 받음 (체크 시 문구 삭제)</label>
+        <label class="msg-chk"><input type="checkbox" id="msgBusOn" onchange="msgState.busOn=this.checked;refreshMsg()"> 차량 탑승 (체크 시 안내 문구 추가)</label>
+      </div>`;
+  }
+  if(tab==='qapp'){
+    return `<div class="msg-note">학생명·분원명만 자동으로 들어갑니다. 추가 입력 없음.</div>`;
+  }
+  if(tab==='bus'){
+    return `
+      <div class="form-row">
+        <div class="field"><label>탑승장소</label><input id="msgBusStop" placeholder="예: 가온초 정문" oninput="refreshMsg()"></div>
+        <div class="field"><label>학부모님 전화번호</label><input id="msgPhone" placeholder="예: 01012345678" oninput="refreshMsg()"></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>수업시간</label><input id="msgClassTime" placeholder="예: 14:30~16:10" oninput="refreshMsg()"></div>
+        <div class="field full" style="align-self:flex-end">
+          <label>탑승 구분</label>
+          <div class="seg-toggle">
+            ${['round','go','come'].map(k=>{
+              const lbl={round:'왕복',go:'등원만',come:'하원만'}[k];
+              return `<button type="button" class="seg-btn ${msgState.busRide===k?'on':''}" onclick="setBusRide('${k}')">${lbl}</button>`;
+            }).join('')}
+          </div>
+        </div>
+      </div>`;
+  }
+  if(tab==='homeroom'){
+    const autoBook = chessBookFor(lvl);
+    return `
+      <div class="form-row">
+        <div class="field full"><label>문법책 (체스는 레벨 선택 시 자동 · 에이스는 직접 입력 · 분원 다르면 수정)</label>
+          <input id="msgBook" placeholder="문법 교재명" value="${esc(autoBook)}" oninput="refreshMsg()"></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>교재 전달 상태</label>
+          <select id="msgBookStatus" onchange="onBookStatusChange()">
+            <option value="전달완료">전달완료</option>
+            <option value="수업 첫날 배부예정">수업 첫날 배부예정</option>
+            <option value="OT날 배부예정">OT날 배부예정</option>
+            <option value="담임선생님께 배부예정">담임선생님께 배부예정</option>
+            <option value="__custom__">직접 입력…</option>
+          </select></div>
+        <div class="field"><label>직접 입력</label><input id="msgBookStatusCustom" placeholder="상태 직접 입력" oninput="refreshMsg()" disabled></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>탑승장소 (차량 탈 때만)</label><input id="msgBusStop" placeholder="예: 가온초 정문" oninput="refreshMsg()"></div>
+        <div class="field full" style="align-self:flex-end">
+          <label>차량</label>
+          <div class="seg-toggle">
+            ${['round','go','come','none'].map(k=>{
+              const lbl={round:'왕복',go:'등원만',come:'하원만',none:'안 탐(X)'}[k];
+              return `<button type="button" class="seg-btn ${msgState.busRide===k?'on':''}" onclick="setBusRide('${k}')">${lbl}</button>`;
+            }).join('')}
+          </div>
+        </div>
+      </div>
+      <div style="margin:4px 0 10px">
+        <label class="msg-chk"><input type="checkbox" id="msgBagHr" ${msgState.bagGiven?'checked':''} onchange="msgState.bagGiven=this.checked;refreshMsg()"> 가방 받음 (O / 미체크 시 X)</label>
+      </div>`;
+  }
+  return '';
+}
+function onBookStatusChange(){
+  const sel = el('msgBookStatus');
+  const custom = el('msgBookStatusCustom');
+  if(sel && custom){
+    custom.disabled = (sel.value!=='__custom__');
+    if(sel.value!=='__custom__') custom.value='';
+  }
+  refreshMsg();
+}
+function setBusRide(k){ msgState.busRide=k; renderMsgCard(); }
+
+/* 문자 카드 전체 렌더 (탭 + 부가입력 + 미리보기) */
+function renderMsgCard(){
+  const box = el('msgCardBody');
+  if(!box) return;
+  const tabs = [
+    {k:'enroll', l:'신규등록'},
+    {k:'qapp', l:'Q앱 설치'},
+    {k:'bus', l:'차량쌤'},
+    {k:'homeroom', l:'담임쌤'},
+  ];
+  box.innerHTML = `
+    <div class="msg-tabs">
+      ${tabs.map(t=>`<button type="button" class="msg-tab ${msgState.tab===t.k?'on':''}" onclick="setMsgTab('${t.k}')">${t.l}</button>`).join('')}
+    </div>
+    <div class="msg-extra">${msgExtraFields()}</div>
+    <div class="msg-preview-wrap">
+      <div class="msg-preview-head">
+        <span>문자 미리보기</span>
+        <button type="button" class="btn sm primary" onclick="copyMsg()">📋 복사</button>
+      </div>
+      <textarea id="msgPreview" class="msg-preview" rows="16" readonly>${esc(buildCurrentMsg())}</textarea>
+    </div>
+    <div class="msg-hint">왼쪽 신규생 정보를 입력하면 실시간으로 반영됩니다. 문법 교재가 분원과 다르면 직접 수정하세요.</div>`;
+}
+function setMsgTab(k){ msgState.tab=k; renderMsgCard(); }
+/* 미리보기만 갱신 (부가입력 칸 포커스 유지 — 전체 리렌더 안 함) */
+function refreshMsg(){
+  const pv = el('msgPreview');
+  if(pv) pv.value = buildCurrentMsg();
+}
+function copyMsg(){
+  const txt = buildCurrentMsg();
+  navigator.clipboard.writeText(txt).then(
+    ()=> toast('문자가 복사되었습니다','ok'),
+    ()=>{
+      // 폴백
+      const ta=el('msgPreview'); ta.removeAttribute('readonly'); ta.select();
+      try{ document.execCommand('copy'); toast('문자가 복사되었습니다','ok'); }
+      catch(e){ toast('복사 실패 — 직접 선택해 복사하세요','err'); }
+      ta.setAttribute('readonly','');
+    }
+  );
+}
