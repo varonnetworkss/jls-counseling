@@ -4145,15 +4145,15 @@ async function renderStart(){
 
     <div class="panel" style="margin-bottom:16px">
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-<select id="stMin" class="date-pick" style="height:40px" onchange="startOnMinChange()">
+<select id="stMin" onchange="startOnMinChange()" style="height:40px;padding:0 12px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface-2);font-size:15px">
           <option value="15" selected>15분</option>
           <option value="10">10분</option>
           <option value="20">20분</option>
           <option value="30">30분</option>
           <option value="__custom__">직접 입력</option>
         </select>
-        <input id="stMinCustom" type="number" min="1" max="180" placeholder="분" class="date-pick"
-          style="height:40px;width:80px;display:none">
+        <input id="stMinCustom" type="number" min="1" max="180" placeholder="분"
+          style="height:40px;width:80px;display:none;padding:0 12px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface-2);font-size:15px">
         <div style="position:relative;flex:1;min-width:240px">
           <input id="stInput" placeholder="이름 또는 회원코드 입력 후 Enter" autocomplete="off"
             style="width:100%;height:40px;padding:0 14px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface-2);font-size:15px">
