@@ -857,7 +857,6 @@ function buildShell(){
       <div class="sb-item" data-nav="closing">${I.closing}<span>인원마감표</span></div>
       <div class="sb-item" data-nav="students">${I.stu}<span>학생관리</span></div>
       <div class="sb-item" data-nav="teachers">${I.teach}<span>선생님 계정</span></div>
-      <div class="sb-item" data-nav="assistants">${I.teach}<span>조교 계정</span></div>
      <div class="sb-item" data-nav="segments-edit">${I.seg}<span>세그먼트 공지</span></div>
       <div class="sb-item" data-nav="start">${I.stu}<span>STaRT 외출관리</span></div>
       <div class="sb-item" data-nav="data">${I.data}<span>데이터관리</span></div>`;
@@ -937,7 +936,6 @@ function render(){
   else if(root==='teachers'){ setActiveNav('teachers'); renderTeacherAccounts(); }
 else if(root==='segments-edit'){ setActiveNav('segments-edit'); renderSegmentEdit(); }
   else if(root==='start'){ setActiveNav('start'); renderStart(); }
-  else if(root==='assistants'){ setActiveNav('assistants'); renderAssistantAccounts(); }
   else if(root==='myclasses'){ setActiveNav('myclasses'); renderTeacherHome(); }
   else { go(session.role==='admin'?'admin':'branch'); return; }
   el('content').scrollIntoView({block:'start'});
@@ -3272,19 +3270,21 @@ function renderTeacherAccounts(){
   const branchId = session.branchId;
   const b = getBranch(branchId);
   const semId = state.semId;
-  crumbs([{label:'선생님 계정'}]);
-
-  // 이 분원 이번 학기 전체명단에 등록된 담임 이름 목록 (드롭다운용)
+  crumbs([{label:'선생님·조교 계정'}]);
+ 
+  // 이 분원 이번 학기 전체명단에 등록된 담임 이름 목록 (선생님 계정 드롭다운용)
   const teacherNames = [...new Set(
     activeRecordsOf(branchId, semId).map(r=>r.teacher).filter(t=>t && t!=='미배정')
   )].sort((a,b)=>a.localeCompare(b,'ko'));
-
-  // 이 분원 선생님 계정들
+ 
   const teacherUsers = db.users.filter(u=>u.role==='teacher' && u.branchId===branchId);
-
+  const assistantUsers = db.users.filter(u=>u.role==='assistant' && u.branchId===branchId);
+ 
   el('content').innerHTML = `
-    <div class="page-head"><h2>선생님 계정</h2>
-      <div class="sub">${esc(b.name)} · 선생님 계정을 만들면 자기 담당 반의 상담 현황만 볼 수 있습니다. 담당 반은 전체명단의 담임 이름으로 자동 연결됩니다.</div></div>
+    <div class="page-head"><h2>선생님·조교 계정</h2>
+      <div class="sub">${esc(b.name)} · 선생님은 자기 반 상담 현황을, 조교는 STaRT 외출관리만 볼 수 있습니다.</div></div>
+ 
+    <!-- ===== 선생님 계정 ===== -->
     <div class="panel" style="margin-bottom:16px">
       <h3 style="font-size:14.5px;font-weight:650;margin-bottom:14px">새 선생님 계정 생성</h3>
       <div class="acct-add">
@@ -3299,7 +3299,7 @@ function renderTeacherAccounts(){
       </div>
       ${teacherNames.length===0?`<div class="pd" style="margin-top:10px;color:var(--neg)">이번 학기 전체명단이 업로드되어야 담임 목록이 나옵니다. 먼저 데이터관리에서 명단을 올려주세요.</div>`:''}
     </div>
-    <div class="table-wrap">
+    <div class="table-wrap" style="margin-bottom:24px">
       <div class="table-scroll"><table class="grid">
         <thead><tr><th>담임</th><th>담당 반</th><th>아이디</th><th>비밀번호</th><th class="cc">관리</th></tr></thead>
         <tbody>
@@ -3316,7 +3316,84 @@ function renderTeacherAccounts(){
           }).join('')}
         </tbody>
       </table></div>
+    </div>
+ 
+    <!-- ===== 조교 계정 ===== -->
+    <div class="panel" style="margin-bottom:16px">
+      <h3 style="font-size:14.5px;font-weight:650;margin-bottom:4px">새 조교 계정 생성</h3>
+      <div class="pd" style="margin-bottom:14px">조교 계정으로 로그인하면 <b>STaRT 외출관리 화면만</b> 보입니다. (다른 메뉴는 보이지 않습니다)</div>
+      <div class="acct-add">
+        <div class="field"><label>조교 이름</label><input id="asAcctName" placeholder="예: 김조교"></div>
+        <div class="field"><label>아이디</label><input id="asAcctUser" placeholder="영문 아이디"></div>
+        <div class="field"><label>비밀번호</label><input id="asAcctPw" placeholder="비밀번호"></div>
+        <button class="btn primary" onclick="createAssistantAccount()">계정 생성</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <div class="table-scroll"><table class="grid">
+        <thead><tr><th>조교</th><th>아이디</th><th>비밀번호</th><th class="cc">관리</th></tr></thead>
+        <tbody>
+          ${assistantUsers.length===0?`<tr><td colspan="4" style="padding:16px;color:var(--ink-3);text-align:center">아직 만든 조교 계정이 없습니다.</td></tr>`:
+          assistantUsers.map(u=>`<tr>
+              <td><b>${esc(u.teacherName||'(이름없음)')}</b></td>
+              <td><span class="code-chip">${esc(u.username)}</span></td>
+              <td style="color:var(--ink-3)">${esc(u.password)}</td>
+              <td class="cc"><button class="btn sm" style="color:var(--neg)" onclick="deleteAccount('${u.id}')">삭제</button></td>
+            </tr>`).join('')}
+        </tbody>
+      </table></div>
     </div>`;
+}
+ 
+/* ============================================================================
+   [B] 조교 계정 생성 — createTeacherAccount 근처에 추가
+   ============================================================================ */
+function createAssistantAccount(){
+  const branchId = session.branchId;
+  const name = el('asAcctName').value.trim();
+  const user = el('asAcctUser').value.trim(), pw = el('asAcctPw').value.trim();
+  if(!name){ toast('조교 이름을 입력하세요','err'); return; }
+  if(!user||!pw){ toast('아이디와 비밀번호를 입력하세요','err'); return; }
+  if(db.users.some(u=>u.username===user)){ toast('이미 존재하는 아이디입니다','err'); return; }
+  db.users.push({ id:uid('u'), username:user, password:pw, role:'assistant', branchId, teacherName:name });
+  saveDB(); toast(`${name} 조교 계정 생성 완료`,'ok'); render();
+}
+ 
+ 
+/* ============================================================================
+   [C] STaRT 기록 표 — 삭제 버튼 추가. start_module.js의 startRenderLog 교체
+   ============================================================================ */
+function startRenderLog(){
+  const body = el('stLogBody'); if(!body) return;
+  el('stLogCount').textContent = startState.logRows.length+'명';
+  body.innerHTML = startState.logRows.map(r=>{
+    const elapsed = r.returnedAt ? Math.round((new Date(r.returnedAt)-new Date(r.leftAt))/1000) : null;
+    const over = elapsed!=null && elapsed > r.limitSec;
+    return `<tr>
+      <td class="st-name">${esc(r.name)}</td>
+      <td>${esc(r.cls||'—')}</td>
+      <td>${esc(r.teacher||'—')}</td>
+      <td class="num">${startHM(r.leftAt)}</td>
+      <td class="num">${r.returnedAt?startHM(r.returnedAt):'—'}</td>
+      <td class="num">${elapsed!=null?startDur(elapsed):'—'}</td>
+      <td style="font-weight:700;color:${over?'var(--neg)':'var(--pos)'}">${over?'초과':'정상'}</td>
+      <td class="cc"><button class="btn sm" style="color:var(--neg)" onclick="startDeleteLog('${r.id}')">삭제</button></td>
+    </tr>`;
+  }).join('');
+}
+ 
+/* ============================================================================
+   [D] STaRT 기록 삭제 — start_module.js 아무 데나(함수 밖) 추가
+   ============================================================================ */
+async function startDeleteLog(id){
+  const r = startState.logRows.find(x=>x.id===id);
+  if(!r) return;
+  if(!confirm(`${r.name} 학생의 이 기록을 삭제할까요?`)) return;
+  const { error } = await sb.from('start_sessions').delete().eq('id', id);
+  if(error){ console.error(error); toast('삭제 실패','err'); return; }
+  startState.logRows = startState.logRows.filter(x=>x.id!==id);
+  startRenderLog();
+  toast('기록 삭제됨','ok');
 }
 function createTeacherAccount(){
   const branchId = session.branchId;
@@ -4107,7 +4184,7 @@ async function renderStart(){
       </div>
       <div class="table-wrap"><div class="table-scroll">
         <table class="grid">
-          <thead><tr><th>이름</th><th>반</th><th>담임</th><th>나간 시각</th><th>복귀 시각</th><th>소요</th><th>결과</th></tr></thead>
+          <thead><tr><th>이름</th><th>반</th><th>담임</th><th>나간 시각</th><th>복귀 시각</th><th>소요</th><th>결과</th><th></th></tr></thead>
           <tbody id="stLogBody"></tbody>
         </table>
       </div></div>
@@ -4300,23 +4377,7 @@ function startBeep(){
 /* ============================================================================
    기록 표
    ============================================================================ */
-function startRenderLog(){
-  const body = el('stLogBody'); if(!body) return;
-  el('stLogCount').textContent = startState.logRows.length+'명';
-  body.innerHTML = startState.logRows.map(r=>{
-    const elapsed = r.returnedAt ? Math.round((new Date(r.returnedAt)-new Date(r.leftAt))/1000) : null;
-    const over = elapsed!=null && elapsed > r.limitSec;
-    return `<tr>
-      <td class="st-name">${esc(r.name)}</td>
-      <td>${esc(r.cls||'—')}</td>
-      <td>${esc(r.teacher||'—')}</td>
-      <td class="num">${startHM(r.leftAt)}</td>
-      <td class="num">${r.returnedAt?startHM(r.returnedAt):'—'}</td>
-      <td class="num">${elapsed!=null?startDur(elapsed):'—'}</td>
-      <td style="font-weight:700;color:${over?'var(--neg)':'var(--pos)'}">${over?'초과':'정상'}</td>
-    </tr>`;
-  }).join('');
-}
+
 function startDownloadCSV(){
   if(!startState.logRows.length){ toast('기록이 없습니다','err'); return; }
   const rows=[['이름','반','담임','나간시각','복귀시각','소요(분:초)','제한(분)','결과']];
