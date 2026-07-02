@@ -789,7 +789,7 @@ function enterApp(){
   state.semId = db.semesters.some(s=>s.id===cur.id) ? cur.id : (db.semesters[0] ? db.semesters[0].id : null);
   buildShell();
   if(!location.hash || location.hash==='#'){
-    location.hash = session.role==='admin' ? '#/admin' : (session.role==='teacher' ? '#/myclasses' : '#/branch');
+   location.hash = session.role==='admin' ? '#/admin' : (session.role==='teacher' ? '#/myclasses' : '#/branch');
   } else { render(); }
 }
 
@@ -800,7 +800,7 @@ function buildShell(){
   const isAdmin = session.role==='admin';
   const isTeacher = session.role==='teacher';
   const branch = isAdmin ? null : getBranch(session.branchId);
-  el('sbScope').textContent = isAdmin ? '통합 관리자' : (isTeacher ? (branch?branch.name:'분원')+' 선생님' : (branch?branch.name:'분원'));
+  el('sbScope').textContent = isAdmin ? '통합 관리자' : (isTeacher ? (branch?branch.name:'분원')+' 선생님' : (session.role==='assistant' ? (branch?branch.name:'분원')+' 조교' : (branch?branch.name:'분원')));
   el('sbAvatar').textContent = (session.username[0]||'U').toUpperCase();
   el('sbUserName').textContent = isAdmin ? '관리자' : (isTeacher ? (session.teacherName||session.username) : (branch?branch.name:session.username));
   el('sbUserRole').textContent = session.username;
@@ -841,11 +841,15 @@ function buildShell(){
       <div class="sb-item" data-nav="roster">${I.roster}<span>신규·퇴원 명단</span></div>
       <div class="sb-item" data-nav="closing">${I.closing}<span>인원마감표</span></div>
       <div class="sb-item" data-nav="accounts">${I.acct}<span>분원 계정 관리</span></div>`;
-  } else if(isTeacher){
+} else if(isTeacher){
     nav.innerHTML = `
       <div class="sb-sect">선생님</div>
       <div class="sb-item" data-nav="myclasses">${I.dash}<span>내 반 현황</span></div>`;
-  } else {
+  } else if(session.role==='assistant'){
+    nav.innerHTML = `
+      <div class="sb-sect">조교</div>
+      <div class="sb-item" data-nav="start">${I.stu}<span>STaRT 외출관리</span></div>`;
+ } else {
     nav.innerHTML = `
       <div class="sb-sect">분원</div>
       <div class="sb-item" data-nav="branch">${I.dash}<span>Dashboard</span></div>
@@ -853,7 +857,9 @@ function buildShell(){
       <div class="sb-item" data-nav="closing">${I.closing}<span>인원마감표</span></div>
       <div class="sb-item" data-nav="students">${I.stu}<span>학생관리</span></div>
       <div class="sb-item" data-nav="teachers">${I.teach}<span>선생님 계정</span></div>
-      <div class="sb-item" data-nav="segments-edit">${I.seg}<span>세그먼트 공지</span></div>
+      <div class="sb-item" data-nav="assistants">${I.teach}<span>조교 계정</span></div>
+     <div class="sb-item" data-nav="segments-edit">${I.seg}<span>세그먼트 공지</span></div>
+      <div class="sb-item" data-nav="start">${I.stu}<span>STaRT 외출관리</span></div>
       <div class="sb-item" data-nav="data">${I.data}<span>데이터관리</span></div>`;
   }
   nav.querySelectorAll('[data-nav]').forEach(it=>{
@@ -890,13 +896,16 @@ function render(){
   // branch 대시보드/데이터관리는 불가. branch는 admin/accounts 불가.
   if(session.role==='admin'){
     if(root==='branch' && parts[1]!=='teacher' && parts[1]!=='class'){ go('admin'); return; }
-    if(root==='data'||root==='students'||root==='segments-edit'||root==='teachers'){ go('admin'); return; }
+   if(root==='data'||root==='students'||root==='segments-edit'||root==='teachers'||root==='start'||root==='assistants'){ go('admin'); return; }
   }
   // 선생님: 자기 반 관련 화면만 (myclasses / branch teacher·class 상세)
   if(session.role==='teacher'){
     const allowed = (root==='myclasses')
       || (root==='branch' && (parts[1]==='teacher' || parts[1]==='class'));
     if(!allowed){ go('myclasses'); return; }
+  }
+  if(session.role==='assistant'){
+    if(root!=='start'){ go('start'); return; }
   }
   if(session.role==='branch' && (root==='admin'||root==='accounts')){ go('branch'); return; }
   // 분원 계정은 자기 분원 roster 상세만 (다른 분원 직접 접근 차단)
@@ -926,7 +935,9 @@ function render(){
     } else { setActiveNav('closing'); renderClosing(session.branchId); }
   }
   else if(root==='teachers'){ setActiveNav('teachers'); renderTeacherAccounts(); }
-  else if(root==='segments-edit'){ setActiveNav('segments-edit'); renderSegmentEdit(); }
+else if(root==='segments-edit'){ setActiveNav('segments-edit'); renderSegmentEdit(); }
+  else if(root==='start'){ setActiveNav('start'); renderStart(); }
+  else if(root==='assistants'){ setActiveNav('assistants'); renderAssistantAccounts(); }
   else if(root==='myclasses'){ setActiveNav('myclasses'); renderTeacherHome(); }
   else { go(session.role==='admin'?'admin':'branch'); return; }
   el('content').scrollIntoView({block:'start'});
@@ -3964,4 +3975,461 @@ function clearNsClass(){
   const search = el('nsClassSearch');
   if(search){ search.value=''; search.focus(); }
   renderMsgCard();
+}
+/* ============================================================================
+   ★ STaRT 외출관리 — 분원 전용
+   - 기존 sb(Supabase), db, session 재사용
+   - 외출 기록은 start_sessions 새 테이블에 저장 (start_setup.sql 먼저 실행)
+   - 여러 선생님 실시간 동기화 + 15분 초과 시 모든 화면에 시스템 알림
+   ============================================================================ */
+let startState = {
+  active: [],        // 외출 중 세션
+  logRows: [],       // 완료 기록 (선택 날짜)
+  viewDate: null,    // 'YYYY-MM-DD'
+  channel: null,     // realtime 구독
+  ticker: null,      // 1초 타이머
+  muted: false,
+  bound: false,      // 입력 이벤트 바인딩 여부
+};
+
+/* 반 원본(class_name)에서 레벨코드만: "[PA2]SU3/MWF/..." -> "PA2" */
+function startLevelOf(raw){
+  const m = String(raw||'').match(/^\s*\[([A-Za-z]+[0-9]*)/);
+  return m ? m[1] : '';
+}
+/* class_label의 · 앞부분 (예: "월수금 3부") */
+function startTimeLabelOf(label){
+  if(!label) return '';
+  const p = String(label).split('·');
+  return p[0] ? p[0].trim() : '';
+}
+/* 현재 학기 이 분원의 학생 → {level, timeLabel, teacher} 매핑 */
+function startRecMap(){
+  const branchId = session.branchId, semId = state.semId;
+  const map = new Map();
+  db.semesterRecords
+    .filter(r=>r.branchId===branchId && r.semesterId===semId)
+    .forEach(r=>{
+      const prev = map.get(r.studentId);
+      if(prev && prev.status==='active' && r.status!=='active') return;
+      map.set(r.studentId, {
+        level: startLevelOf(r.className),
+        timeLabel: startTimeLabelOf(r.classLabel),
+        teacher: r.teacher||'',
+        status: r.status,
+      });
+    });
+  return map;
+}
+/* 학생 검색 (이름/회원코드) — 이 분원 명단 안에서만 */
+function startFindStudents(query){
+  const q = query.trim().toLowerCase();
+  if(!q) return [];
+  const branchId = session.branchId, semId = state.semId;
+  const myStudentIds = new Set(
+    db.semesterRecords.filter(r=>r.branchId===branchId && r.semesterId===semId).map(r=>r.studentId)
+  );
+  return db.students
+    .filter(s=> myStudentIds.has(s.id) &&
+      ((s.name||'').toLowerCase().includes(q) || (s.code||'').toLowerCase().includes(q)))
+    .slice(0,8);
+}
+function startStudentInfo(stu){
+  const rec = startRecMap().get(stu.id) || {};
+  const cls = [rec.timeLabel, rec.level].filter(Boolean).join(' ');
+  return { id:stu.id, code:stu.code, name:stu.name, cls, teacher:rec.teacher||'' };
+}
+
+/* ---- 시간 헬퍼 ---- */
+function startPad(n){ return String(n).padStart(2,'0'); }
+function startTodayStr(){ const d=new Date(); return `${d.getFullYear()}-${startPad(d.getMonth()+1)}-${startPad(d.getDate())}`; }
+function startHM(iso){ const d=new Date(iso); return `${startPad(d.getHours())}:${startPad(d.getMinutes())}`; }
+function startDur(sec){ const neg=sec<0; sec=Math.abs(sec); return (neg?'-':'')+startPad(Math.floor(sec/60))+':'+startPad(sec%60); }
+
+/* row 매핑 */
+function startFromRow(r){
+  return { id:r.id, studentId:r.student_id, name:r.name, cls:r.cls, teacher:r.teacher,
+    leftAt:r.left_at, returnedAt:r.returned_at, limitSec:r.limit_sec, status:r.status,
+    date:r.date, alarmed:false };
+}
+
+/* ============================================================================
+   메인 렌더
+   ============================================================================ */
+async function renderStart(){
+  crumbs([{label:'STaRT 외출관리'}]);
+  if(!startState.viewDate) startState.viewDate = startTodayStr();
+
+  el('content').innerHTML = `
+    <div class="page-head">
+      <h2>STaRT 외출관리</h2>
+      <div class="sub">${esc(getBranch(session.branchId)?.name||'')} · 15분 외출 타이머 · 여러 선생님 실시간 공유</div>
+    </div>
+
+    <div class="panel" style="margin-bottom:16px">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+<select id="stMin" class="date-pick" style="height:40px" onchange="startOnMinChange()">
+          <option value="15" selected>15분</option>
+          <option value="10">10분</option>
+          <option value="20">20분</option>
+          <option value="30">30분</option>
+          <option value="__custom__">직접 입력</option>
+        </select>
+        <input id="stMinCustom" type="number" min="1" max="180" placeholder="분" class="date-pick"
+          style="height:40px;width:80px;display:none">
+        <div style="position:relative;flex:1;min-width:240px">
+          <input id="stInput" placeholder="이름 또는 회원코드 입력 후 Enter" autocomplete="off"
+            style="width:100%;height:40px;padding:0 14px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface-2);font-size:15px">
+          <div id="stAc" class="wd-results" style="display:none;position:absolute;top:44px;left:0;right:0;z-index:50;max-height:300px;overflow-y:auto"></div>
+        </div>
+        <button class="btn primary" id="stAddBtn">외출 등록</button>
+        <button class="btn" id="stMuteBtn" title="소리">🔊</button>
+        <button class="btn" id="stPermBtn">알림 허용</button>
+      </div>
+      <div id="stPermHint" style="margin-top:8px;font-size:12px;color:var(--warn);display:none">
+        다른 창을 보고 있어도 알림을 받으려면 위 <b>알림 허용</b>을 눌러주세요. (각자 컴퓨터에서 한 번씩)
+      </div>
+    </div>
+
+    <div id="stGrid" class="card-grid g3"></div>
+    <div id="stEmpty" class="empty" style="display:none">
+      <div class="ei">○</div><div class="et">현재 외출 중인 학생이 없습니다</div>
+      <div class="es">이름이나 회원코드를 입력하면 카운트다운이 시작됩니다.</div>
+    </div>
+
+    <div class="panel" style="margin-top:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <h3 style="font-size:14.5px;font-weight:700">기록 <span id="stLogCount" style="color:var(--ink-3);font-weight:500">0명</span></h3>
+        <div style="display:flex;gap:10px;align-items:center">
+          <input type="date" id="stDate" class="date-pick" value="${startState.viewDate}">
+          <button class="btn sm" id="stCsvBtn">CSV 내려받기</button>
+        </div>
+      </div>
+      <div class="table-wrap"><div class="table-scroll">
+        <table class="grid">
+          <thead><tr><th>이름</th><th>반</th><th>담임</th><th>나간 시각</th><th>복귀 시각</th><th>소요</th><th>결과</th></tr></thead>
+          <tbody id="stLogBody"></tbody>
+        </table>
+      </div></div>
+    </div>`;
+
+  startBindUI();
+  await startLoadSessions(startState.viewDate);
+  startSubscribe();
+  startStartTicker();
+  startRefreshPermHint();
+}
+
+/* ============================================================================
+   데이터 로드 (start_sessions)
+   ============================================================================ */
+async function startLoadSessions(dateStr){
+  if(!sb){ try{ initSupabase(); }catch(e){ console.error(e); return; } }
+  const { data, error } = await sb.from('start_sessions').select('*')
+    .eq('branch_id', session.branchId).eq('date', dateStr)
+    .order('left_at', { ascending:false });
+  if(error){ console.error(error); toast('외출 기록 로드 실패 — start_sessions 테이블을 확인하세요','err'); return; }
+  const rows = (data||[]).map(startFromRow);
+  startState.active = rows.filter(r=>r.status==='out');
+  startState.logRows = rows.filter(r=>r.status==='returned');
+  startRenderCards(); startRenderLog();
+}
+
+/* ============================================================================
+   외출 등록 / 복귀 / 취소
+   ============================================================================ */
+async function startAdd(stu){
+  const info = startStudentInfo(stu);
+  if(startState.active.some(a=>a.studentId===stu.id)){ toast(`${info.name} 학생은 이미 외출 중입니다`,'err'); return; }
+  const limitSec = startLimitSec();
+  const row = {
+    branch_id: session.branchId, date: startTodayStr(),
+    student_id: stu.id, name: info.name, cls: info.cls, teacher: info.teacher,
+    left_at: new Date().toISOString(), returned_at: null, limit_sec: limitSec,
+    status: 'out', by_user: session.username,
+  };
+  const { data, error } = await sb.from('start_sessions').insert(row).select().single();
+  if(error){ console.error(error); toast('등록 실패 — 다시 시도하세요','err'); return; }
+  if(!startState.active.some(a=>a.id===data.id)){ startState.active.unshift(startFromRow(data)); startRenderCards(); }
+  el('stInput').value=''; el('stAc').style.display='none'; el('stInput').focus();
+  startUnlockAudio();
+}
+async function startReturn(id){
+  const a = startState.active.find(x=>x.id===id);
+  if(!a) return;
+  const ret = new Date().toISOString();
+  const { error } = await sb.from('start_sessions').update({ status:'returned', returned_at:ret }).eq('id', id);
+  if(error){ console.error(error); toast('복귀 처리 실패','err'); return; }
+  a.returnedAt=ret; a.status='returned';
+  startState.active = startState.active.filter(x=>x.id!==id);
+  startState.logRows.unshift(a);
+  startRenderCards(); startRenderLog();
+}
+async function startCancel(id){
+  const { error } = await sb.from('start_sessions').delete().eq('id', id);
+  if(error){ console.error(error); toast('취소 실패','err'); return; }
+  startState.active = startState.active.filter(x=>x.id!==id);
+  startRenderCards();
+}
+
+/* ============================================================================
+   실시간 동기화
+   ============================================================================ */
+function startSubscribe(){
+  if(startState.channel) sb.removeChannel(startState.channel);
+  startState.channel = sb.channel('start_'+session.branchId)
+    .on('postgres_changes',
+      { event:'*', schema:'public', table:'start_sessions', filter:`branch_id=eq.${session.branchId}` },
+      payload => startHandleRealtime(payload))
+    .subscribe();
+}
+function startHandleRealtime(payload){
+  const row = payload.new || payload.old;
+  if(!row || row.date!==startState.viewDate) return;
+  if(payload.eventType==='INSERT'){
+    const r = startFromRow(payload.new);
+    if(r.status==='out' && !startState.active.some(a=>a.id===r.id)){ startState.active.unshift(r); startRenderCards(); }
+  } else if(payload.eventType==='UPDATE'){
+    const r = startFromRow(payload.new);
+    if(r.status==='returned'){
+      startState.active = startState.active.filter(a=>a.id!==r.id);
+      if(!startState.logRows.some(l=>l.id===r.id)) startState.logRows.unshift(r);
+      startRenderCards(); startRenderLog();
+    }
+  } else if(payload.eventType==='DELETE'){
+    startState.active = startState.active.filter(a=>a.id!==payload.old.id);
+    startState.logRows = startState.logRows.filter(l=>l.id!==payload.old.id);
+    startRenderCards(); startRenderLog();
+  }
+}
+
+/* ============================================================================
+   카드 렌더 + 매초 tick
+   ============================================================================ */
+function startRenderCards(){
+  const grid = el('stGrid'); if(!grid) return;
+  el('stEmpty').style.display = startState.active.length ? 'none':'block';
+  grid.innerHTML = startState.active.map(a=>{
+    const clsLine = [a.cls, a.teacher].filter(Boolean).join(' · ');
+    return `<div class="card start-card" data-id="${a.id}">
+      <div class="card-name" style="font-size:26px">${esc(a.name)}</div>
+      <div style="color:var(--brand);font-weight:600;font-size:14px;margin:2px 0 4px">${esc(clsLine||'—')}</div>
+      <div style="color:var(--ink-3);font-size:13px;margin-bottom:10px">나간 시각 · <b>${startHM(a.leftAt)}</b></div>
+      <div class="st-timer" style="font-size:46px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--pos);line-height:1">00:00</div>
+      <div class="st-bar" style="height:6px;background:var(--surface-2);border-radius:4px;margin-top:10px;overflow:hidden"><i style="display:block;height:100%;background:var(--pos);width:100%"></i></div>
+      <div class="st-status" style="font-size:13px;color:var(--ink-3);margin-top:8px"></div>
+      <div style="display:flex;gap:8px;margin-top:14px">
+        <button class="btn primary sm" style="flex:1" onclick="startReturn('${a.id}')">복귀</button>
+        <button class="btn sm" style="flex:1" onclick="startCancel('${a.id}')">취소</button>
+      </div>
+    </div>`;
+  }).join('');
+  startTick();
+}
+function startStartTicker(){
+  if(startState.ticker) clearInterval(startState.ticker);
+  startState.ticker = setInterval(startTick, 1000);
+}
+function startTick(){
+  const grid = el('stGrid'); if(!grid) return;
+  const now = new Date();
+  startState.active.forEach(a=>{
+    const card = grid.querySelector(`.start-card[data-id="${a.id}"]`);
+    if(!card) return;
+    const elapsed = Math.floor((now - new Date(a.leftAt))/1000);
+    const remain = a.limitSec - elapsed;
+    const timerEl = card.querySelector('.st-timer');
+    const barEl = card.querySelector('.st-bar > i');
+    const statusEl = card.querySelector('.st-status');
+    if(remain>0){
+      timerEl.textContent = startDur(remain);
+      timerEl.style.color = remain<=180 ? 'var(--warn)' : 'var(--pos)';
+      statusEl.textContent = '남은 시간';
+      barEl.style.width = Math.max(0,(remain/a.limitSec)*100)+'%';
+      barEl.style.background = remain<=180 ? 'var(--warn)' : 'var(--pos)';
+      card.style.borderColor = ''; card.style.animation='';
+    } else {
+      timerEl.textContent = '+'+startDur(elapsed - a.limitSec);
+      timerEl.style.color = '#fff';
+      statusEl.textContent = '초과 시간 · 복귀 확인 필요';
+      barEl.style.width='100%'; barEl.style.background='var(--neg)';
+      card.style.borderColor='var(--neg)';
+      card.style.animation='stFlash 0.9s infinite';
+      if(!a.alarmed){ a.alarmed=true; startFireAlarm(a); }
+    }
+  });
+}
+
+/* ============================================================================
+   초과 알림 — 소리 + 시스템 알림 + 토스트 (모든 선생님 화면)
+   ============================================================================ */
+function startFireAlarm(a){
+  startBeep();
+  toast(`⏰ ${a.name} 학생 시간 초과!`,'err');
+  startSystemNotify(a.name, a.limitSec);
+}
+function startSystemNotify(name, limitSec){
+  if(!('Notification' in window) || Notification.permission!=='granted') return;
+  try{
+    const n = new Notification('STaRT 시간 초과', {
+      body: `${name} 학생이 ${Math.round(limitSec/60)}분을 넘겼습니다. 복귀 확인이 필요합니다.`,
+      tag: 'start-'+name+'-'+Date.now(), requireInteraction:true,
+    });
+    n.onclick=()=>{ window.focus(); n.close(); };
+  }catch(e){ console.warn(e); }
+}
+let startAudioCtx=null;
+function startUnlockAudio(){ if(startAudioCtx && startAudioCtx.state==='suspended') startAudioCtx.resume(); }
+function startBeep(){
+  if(startState.muted) return;
+  try{
+    startAudioCtx = startAudioCtx || new (window.AudioContext||window.webkitAudioContext)();
+    let t=startAudioCtx.currentTime;
+    for(let i=0;i<3;i++){
+      const o=startAudioCtx.createOscillator(), g=startAudioCtx.createGain();
+      o.connect(g); g.connect(startAudioCtx.destination);
+      o.type='square'; o.frequency.value = i%2?660:880;
+      g.gain.setValueAtTime(0.001,t);
+      g.gain.exponentialRampToValueAtTime(0.25,t+0.02);
+      g.gain.exponentialRampToValueAtTime(0.001,t+0.3);
+      o.start(t); o.stop(t+0.32); t+=0.34;
+    }
+  }catch(e){}
+}
+
+/* ============================================================================
+   기록 표
+   ============================================================================ */
+function startRenderLog(){
+  const body = el('stLogBody'); if(!body) return;
+  el('stLogCount').textContent = startState.logRows.length+'명';
+  body.innerHTML = startState.logRows.map(r=>{
+    const elapsed = r.returnedAt ? Math.round((new Date(r.returnedAt)-new Date(r.leftAt))/1000) : null;
+    const over = elapsed!=null && elapsed > r.limitSec;
+    return `<tr>
+      <td class="st-name">${esc(r.name)}</td>
+      <td>${esc(r.cls||'—')}</td>
+      <td>${esc(r.teacher||'—')}</td>
+      <td class="num">${startHM(r.leftAt)}</td>
+      <td class="num">${r.returnedAt?startHM(r.returnedAt):'—'}</td>
+      <td class="num">${elapsed!=null?startDur(elapsed):'—'}</td>
+      <td style="font-weight:700;color:${over?'var(--neg)':'var(--pos)'}">${over?'초과':'정상'}</td>
+    </tr>`;
+  }).join('');
+}
+function startDownloadCSV(){
+  if(!startState.logRows.length){ toast('기록이 없습니다','err'); return; }
+  const rows=[['이름','반','담임','나간시각','복귀시각','소요(분:초)','제한(분)','결과']];
+  startState.logRows.slice().reverse().forEach(r=>{
+    const elapsed = r.returnedAt ? Math.round((new Date(r.returnedAt)-new Date(r.leftAt))/1000) : null;
+    const over = elapsed!=null && elapsed>r.limitSec;
+    rows.push([r.name, r.cls||'', r.teacher||'', startHM(r.leftAt), r.returnedAt?startHM(r.returnedAt):'',
+      elapsed!=null?startDur(elapsed):'', Math.round(r.limitSec/60), over?'초과':'정상']);
+  });
+  const csv='\uFEFF'+rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob=new Blob([csv],{type:'text/csv'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`STaRT_${getBranch(session.branchId)?.name||session.branchId}_${startState.viewDate}.csv`;
+  a.click();
+}
+
+/* ============================================================================
+   입력/자동완성 + 이벤트 바인딩
+   ============================================================================ */
+let startAcList=[], startAcSel=-1;
+function startBindUI(){
+  const input = el('stInput');
+  input.addEventListener('input', startOnInput);
+  input.addEventListener('keydown', startOnKeydown);
+  el('stAddBtn').onclick = ()=>{
+    const m = startFindStudents(input.value);
+    if(m.length===1) startAdd(m[0]);
+    else if(m.length>1){ startOnInput(); toast('여러 명이 검색됩니다. 목록에서 선택하세요'); }
+    else toast('일치하는 학생이 없습니다','err');
+  };
+  el('stMuteBtn').onclick = ()=>{ startState.muted=!startState.muted; el('stMuteBtn').textContent=startState.muted?'🔇':'🔊'; };
+  el('stPermBtn').onclick = startAskPerm;
+  el('stDate').onchange = ()=>{ startState.viewDate=el('stDate').value; startLoadSessions(startState.viewDate); };
+  el('stCsvBtn').onclick = startDownloadCSV;
+  document.addEventListener('click', startDocClick);
+}
+function startDocClick(e){
+  const ac=el('stAc'), input=el('stInput');
+  if(!ac || !input) return;
+  if(e.target!==input && !ac.contains(e.target)) ac.style.display='none';
+}
+function startOnInput(){
+  const q = el('stInput').value;
+  const box = el('stAc');
+  if(!q.trim()){ box.style.display='none'; startAcList=[]; return; }
+  startAcList = startFindStudents(q); startAcSel=-1;
+  if(!startAcList.length){ box.innerHTML=`<div class="wd-empty">일치하는 학생이 없습니다</div>`; box.style.display='block'; return; }
+  box.innerHTML = startAcList.map((s,i)=>{
+    const info = startStudentInfo(s);
+    const meta = [info.cls, info.teacher, info.code].filter(Boolean).join(' · ');
+    return `<div class="wd-item" data-i="${i}">
+      <div class="wd-main"><span class="wd-name">${esc(s.name)}</span></div>
+      <div class="wd-meta">${esc(meta)}</div>
+    </div>`;
+  }).join('');
+  box.querySelectorAll('.wd-item').forEach(it=> it.onclick=()=> startAdd(startAcList[parseInt(it.dataset.i,10)]));
+  box.style.display='block';
+}
+function startOnKeydown(e){
+  const box = el('stAc');
+  if(box.style.display!=='block' || !startAcList.length){
+    if(e.key==='Enter'){
+      const m = startFindStudents(el('stInput').value);
+      if(m.length===1) startAdd(m[0]);
+      else if(m.length>1) startOnInput();
+      else toast('일치하는 학생이 없습니다','err');
+    }
+    return;
+  }
+  if(e.key==='ArrowDown'){ e.preventDefault(); startAcSel=Math.min(startAcSel+1,startAcList.length-1); startUpdateAcSel(); }
+  else if(e.key==='ArrowUp'){ e.preventDefault(); startAcSel=Math.max(startAcSel-1,0); startUpdateAcSel(); }
+  else if(e.key==='Enter'){ e.preventDefault(); if(startAcSel>=0) startAdd(startAcList[startAcSel]); else if(startAcList.length===1) startAdd(startAcList[0]); }
+  else if(e.key==='Escape'){ box.style.display='none'; }
+}
+function startUpdateAcSel(){
+  el('stAc').querySelectorAll('.wd-item').forEach((it,i)=> it.classList.toggle('sel', i===startAcSel));
+}
+
+/* ---- 알림 권한 ---- */
+function startRefreshPermHint(){
+  const hint = el('stPermHint');
+  if(!hint) return;
+  if(('Notification' in window) && Notification.permission==='default') hint.style.display='block';
+  else hint.style.display='none';
+}
+function startAskPerm(){
+  if(!('Notification' in window)){ toast('이 브라우저는 알림을 지원하지 않습니다','err'); return; }
+  Notification.requestPermission().then(p=>{
+    startRefreshPermHint();
+    if(p==='granted') toast('알림이 허용되었습니다','ok');
+    else toast('알림이 차단됨 — 주소창 자물쇠 아이콘에서 허용하세요','err');
+  });
+}
+
+/* 카드 깜빡임 keyframe 주입 (한 번만) */
+(function(){
+  if(document.getElementById('stFlashStyle')) return;
+  const st=document.createElement('style'); st.id='stFlashStyle';
+  st.textContent='@keyframes stFlash{0%,100%{background:var(--surface)}50%{background:#3a1414;box-shadow:0 0 24px rgba(255,77,77,.5)}}';
+  document.head.appendChild(st);
+})();
+function startOnMinChange(){
+  const sel = el('stMin');
+  const cust = el('stMinCustom');
+  cust.style.display = (sel.value==='__custom__') ? 'inline-block' : 'none';
+  if(sel.value==='__custom__') cust.focus();
+}
+function startLimitSec(){
+  const sel = el('stMin');
+  if(sel.value==='__custom__'){
+    const m = parseInt(el('stMinCustom').value,10);
+    return (m>0 ? m : 15) * 60;
+  }
+  return parseInt(sel.value,10) * 60;
 }
