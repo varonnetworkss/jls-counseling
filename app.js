@@ -4178,7 +4178,7 @@ async function renderStart(){
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
         <h3 style="font-size:14.5px;font-weight:700">기록 <span id="stLogCount" style="color:var(--ink-3);font-weight:500">0명</span></h3>
         <div style="display:flex;gap:10px;align-items:center">
-          <input type="date" id="stDate" class="date-pick" value="${startState.viewDate}">
+          <input type="date" id="stDate" value="${startState.viewDate}" style="height:36px;padding:0 12px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface-2);font-size:14px">
           <button class="btn sm" id="stCsvBtn">CSV 내려받기</button>
         </div>
       </div>
