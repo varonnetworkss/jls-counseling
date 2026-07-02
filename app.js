@@ -4342,8 +4342,8 @@ function startTick(){
    ============================================================================ */
 function startFireAlarm(a){
   startBeep();
-  toast(`⏰ ${a.name} 학생 시간 초과!`,'err');
   startSystemNotify(a.name, a.limitSec);
+  startShowOverlay();  // 화면 전체 경고
 }
 function startSystemNotify(name, limitSec){
   if(!('Notification' in window) || Notification.permission!=='granted') return;
@@ -4480,6 +4480,26 @@ function startAskPerm(){
   st.textContent='@keyframes stFlash{0%,100%{background:var(--surface)}50%{background:#3a1414;box-shadow:0 0 24px rgba(255,77,77,.5)}}';
   document.head.appendChild(st);
 })();
+(function(){
+  if(document.getElementById('stOverlayStyle')) return;
+  const st=document.createElement('style'); st.id='stOverlayStyle';
+  st.textContent=`
+    #stOverlay{position:fixed;inset:0;z-index:9999;background:rgba(180,0,0,.94);
+      display:none;flex-direction:column;align-items:center;justify-content:center;
+      animation:stOvFlash .8s infinite;text-align:center;padding:24px}
+    @keyframes stOvFlash{0%,100%{background:rgba(180,0,0,.94)}50%{background:rgba(120,0,0,.97)}}
+    .st-ov-inner{max-width:90vw}
+    .st-ov-icon{font-size:80px;line-height:1;margin-bottom:8px}
+    .st-ov-title{color:#fff;font-size:44px;font-weight:900;letter-spacing:4px;margin-bottom:24px}
+    .st-ov-names{display:flex;flex-direction:column;gap:12px;margin-bottom:24px}
+    .st-ov-name{color:#fff;font-size:72px;font-weight:900;line-height:1.1;
+      text-shadow:0 2px 12px rgba(0,0,0,.4)}
+    .st-ov-sub{color:rgba(255,255,255,.9);font-size:22px;font-weight:600;margin-bottom:32px}
+    .st-ov-btn{background:#fff;color:#b40000;border:none;border-radius:14px;
+      font-size:24px;font-weight:800;padding:16px 60px;cursor:pointer}
+    .st-ov-btn:hover{transform:scale(1.05)}`;
+  document.head.appendChild(st);
+})();
 function startOnMinChange(){
   const sel = el('stMin');
   const cust = el('stMinCustom');
@@ -4493,4 +4513,38 @@ function startLimitSec(){
     return (m>0 ? m : 15) * 60;
   }
   return parseInt(sel.value,10) * 60;
+}
+/* 화면 전체 경고 오버레이 — 초과된 학생 이름들을 크게 표시 */
+function startShowOverlay(){
+  let ov = document.getElementById('stOverlay');
+  if(!ov){
+    ov = document.createElement('div');
+    ov.id = 'stOverlay';
+    ov.innerHTML = `
+      <div class="st-ov-inner">
+        <div class="st-ov-icon">⏰</div>
+        <div class="st-ov-title">시간 초과</div>
+        <div class="st-ov-names" id="stOvNames"></div>
+        <div class="st-ov-sub">STaRT 복귀 확인이 필요합니다</div>
+        <button class="st-ov-btn" onclick="startCloseOverlay()">확인</button>
+      </div>`;
+    document.body.appendChild(ov);
+  }
+  startUpdateOverlay();
+  ov.style.display = 'flex';
+}
+function startUpdateOverlay(){
+  const box = document.getElementById('stOvNames');
+  if(!box) return;
+  const now = new Date();
+  const over = startState.active.filter(a=>{
+    const elapsed = Math.floor((now - new Date(a.leftAt))/1000);
+    return elapsed >= a.limitSec;
+  });
+  if(!over.length){ startCloseOverlay(); return; }
+  box.innerHTML = over.map(a=>`<div class="st-ov-name">${esc(a.name)}</div>`).join('');
+}
+function startCloseOverlay(){
+  const ov = document.getElementById('stOverlay');
+  if(ov) ov.style.display = 'none';
 }
