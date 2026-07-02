@@ -4261,7 +4261,16 @@ function startSubscribe(){
     .subscribe();
 }
 function startHandleRealtime(payload){
-  const row = payload.new || payload.old;
+  if(payload.eventType==='DELETE'){
+    const oldId = payload.old && payload.old.id;
+    if(!oldId) return;
+    const before = startState.active.length + startState.logRows.length;
+    startState.active = startState.active.filter(a=>a.id!==oldId);
+    startState.logRows = startState.logRows.filter(l=>l.id!==oldId);
+    startRenderCards(); startRenderLog();
+    return;
+  }
+  const row = payload.new;
   if(!row || row.date!==startState.viewDate) return;
   if(payload.eventType==='INSERT'){
     const r = startFromRow(payload.new);
@@ -4273,10 +4282,6 @@ function startHandleRealtime(payload){
       if(!startState.logRows.some(l=>l.id===r.id)) startState.logRows.unshift(r);
       startRenderCards(); startRenderLog();
     }
-  } else if(payload.eventType==='DELETE'){
-    startState.active = startState.active.filter(a=>a.id!==payload.old.id);
-    startState.logRows = startState.logRows.filter(l=>l.id!==payload.old.id);
-    startRenderCards(); startRenderLog();
   }
 }
 
