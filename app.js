@@ -4411,3 +4411,4 @@ function startRefreshPermHint(){
   const hint=el('stPermHint'); if(!hint) return;
   hint.style.display = (('Notification' in window)&&Notification.permission==='default')?'block':'none';
 } 
+// update
