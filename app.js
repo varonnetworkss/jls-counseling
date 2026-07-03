@@ -4572,4 +4572,61 @@ function startInjectStyles(){
     @media(max-width:900px){.st-columns{grid-template-columns:1fr}}`;
   document.head.appendChild(st);
 }
+/* ============================================================================
+   STaRT 헬퍼 함수 (복구) — app.js 아무 데나(함수 밖) 붙여넣기
+   ============================================================================ */
+
+/* 반 원본(class_name)에서 레벨코드만: "[PA2]SU3/MWF/..." -> "PA2" */
+function startLevelOf(raw){
+  const m = String(raw||'').match(/^\s*\[([A-Za-z]+[0-9]*)/);
+  return m ? m[1] : '';
+}
+/* class_label의 · 앞부분 (예: "월수금 3부") */
+function startTimeLabelOf(label){
+  if(!label) return '';
+  const p = String(label).split('·');
+  return p[0] ? p[0].trim() : '';
+}
+/* 현재 학기 이 분원의 학생 → {level, timeLabel, teacher} 매핑 */
+function startRecMap(){
+  const branchId = session.branchId, semId = state.semId;
+  const map = new Map();
+  db.semesterRecords
+    .filter(r=>r.branchId===branchId && r.semesterId===semId)
+    .forEach(r=>{
+      const prev = map.get(r.studentId);
+      if(prev && prev.status==='active' && r.status!=='active') return;
+      map.set(r.studentId, {
+        level: startLevelOf(r.className),
+        timeLabel: startTimeLabelOf(r.classLabel),
+        teacher: r.teacher||'',
+        status: r.status,
+      });
+    });
+  return map;
+}
+/* 학생 검색 (이름/회원코드) — 이 분원 명단 안에서만 */
+function startFindStudents(query){
+  const q = query.trim().toLowerCase();
+  if(!q) return [];
+  const branchId = session.branchId, semId = state.semId;
+  const myStudentIds = new Set(
+    db.semesterRecords.filter(r=>r.branchId===branchId && r.semesterId===semId).map(r=>r.studentId)
+  );
+  return db.students
+    .filter(s=> myStudentIds.has(s.id) &&
+      ((s.name||'').toLowerCase().includes(q) || (s.code||'').toLowerCase().includes(q)))
+    .slice(0,8);
+}
+function startStudentInfo(stu){
+  const rec = startRecMap().get(stu.id) || {};
+  const cls = [rec.timeLabel, rec.level].filter(Boolean).join(' ');
+  return { id:stu.id, code:stu.code, name:stu.name, cls, teacher:rec.teacher||'' };
+}
+
+/* ---- 시간 헬퍼 ---- */
+function startPad(n){ return String(n).padStart(2,'0'); }
+function startTodayStr(){ const d=new Date(); return `${d.getFullYear()}-${startPad(d.getMonth()+1)}-${startPad(d.getDate())}`; }
+function startHM(iso){ const d=new Date(iso); return `${startPad(d.getHours())}:${startPad(d.getMinutes())}`; }
+function startDur(sec){ const neg=sec<0; sec=Math.abs(sec); return (neg?'-':'')+startPad(Math.floor(sec/60))+':'+startPad(sec%60); }
  
