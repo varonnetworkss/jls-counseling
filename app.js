@@ -848,7 +848,7 @@ function buildShell(){
   } else if(session.role==='assistant'){
     nav.innerHTML = `
       <div class="sb-sect">조교</div>
-      <div class="sb-item" data-nav="start">${I.stu}<span>STaRT 외출관리</span></div>`;
+     <div class="sb-item" data-nav="start">${I.stu}<span>STaRT 관리</span></div>`;
  } else {
     nav.innerHTML = `
       <div class="sb-sect">분원</div>
@@ -858,7 +858,7 @@ function buildShell(){
       <div class="sb-item" data-nav="students">${I.stu}<span>학생관리</span></div>
       <div class="sb-item" data-nav="teachers">${I.teach}<span>선생님 계정</span></div>
      <div class="sb-item" data-nav="segments-edit">${I.seg}<span>세그먼트 공지</span></div>
-      <div class="sb-item" data-nav="start">${I.stu}<span>STaRT 외출관리</span></div>
+      <div class="sb-item" data-nav="start">${I.stu}<span>STaRT 관리</span></div>
       <div class="sb-item" data-nav="data">${I.data}<span>데이터관리</span></div>`;
   }
   nav.querySelectorAll('[data-nav]').forEach(it=>{
@@ -4069,30 +4069,29 @@ async function renderStart(){
   if(!startState.viewDate) startState.viewDate = startTodayStr();
  
   el('content').innerHTML = `
-    <div class="page-head">
-      <h2>STaRT 외출·시험 관리</h2>
-      <div class="sub">${esc(getBranch(session.branchId)?.name||'')} · 시험 10분 · 외출 15분 · 여러 선생님 실시간 공유</div>
+    <div class="page-head" style="display:flex;align-items:flex-end;justify-content:space-between">
+      <div>
+        <h2>STaRT 외출·시험 관리</h2>
+        <div class="sub">${esc(getBranch(session.branchId)?.name||'')} · 시험 10분 · 외출 15분 · 실시간 공유</div>
+      </div>
+      <button class="btn sm" id="stLogBtn">📋 기록 보기</button>
     </div>
  
     <div class="panel" style="margin-bottom:16px">
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
         <div class="st-modetog" id="stModeTog">
-          <button type="button" data-mode="exam" class="st-mode-btn">시험</button>
-          <button type="button" data-mode="outing" class="st-mode-btn active">외출</button>
+          <button type="button" data-mode="exam" class="st-mode-btn"><i class="ti ti-pencil"></i> 시험</button>
+          <button type="button" data-mode="outing" class="st-mode-btn active"><i class="ti ti-walk"></i> 외출</button>
         </div>
-        <select id="stMin" onchange="startOnMinChange()" style="height:40px;padding:0 12px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface-2);font-size:15px">
+        <select id="stMin" onchange="startOnMinChange()" class="st-inp" style="width:110px">
           <option value="__auto__" selected>기본 시간</option>
-          <option value="10">10분</option>
-          <option value="15">15분</option>
-          <option value="20">20분</option>
-          <option value="30">30분</option>
+          <option value="10">10분</option><option value="15">15분</option>
+          <option value="20">20분</option><option value="30">30분</option>
           <option value="__custom__">직접 입력</option>
         </select>
-        <input id="stMinCustom" type="number" min="1" max="180" placeholder="분"
-          style="height:40px;width:80px;display:none;padding:0 12px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface-2);font-size:15px">
+        <input id="stMinCustom" type="number" min="1" max="180" placeholder="분" class="st-inp" style="width:80px;display:none">
         <div style="position:relative;flex:1;min-width:240px">
-          <input id="stInput" placeholder="이름 또는 회원코드 입력 후 Enter" autocomplete="off"
-            style="width:100%;height:40px;padding:0 14px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface-2);font-size:15px">
+          <input id="stInput" placeholder="이름 또는 회원코드 입력 후 Enter" autocomplete="off" class="st-inp" style="width:100%">
           <div id="stAc" class="wd-results" style="display:none;position:absolute;top:44px;left:0;right:0;z-index:50;max-height:300px;overflow-y:auto"></div>
         </div>
         <button class="btn primary" id="stAddBtn">등록</button>
@@ -4100,44 +4099,26 @@ async function renderStart(){
         <button class="btn" id="stPermBtn">알림 허용</button>
       </div>
       <div id="stPermHint" style="margin-top:8px;font-size:12px;color:var(--warn);display:none">
-        다른 창을 보고 있어도 알림을 받으려면 위 <b>알림 허용</b>을 눌러주세요. (각자 컴퓨터에서 한 번씩)
+        다른 창을 봐도 알림을 받으려면 <b>알림 허용</b>을 눌러주세요. (컴퓨터마다 한 번씩)
       </div>
       <div style="margin-top:8px;font-size:12px;color:var(--ink-3)">
-        키보드: 이름 입력 → <b>↑↓</b>로 학생 선택 → <b>Enter</b> 등록 · <b>←→</b>로 시험/외출 전환
+        키보드 — 이름 입력 후 <b>↑↓</b> 학생 선택 · <b>Enter</b> 등록 · <b>←→</b> 시험/외출 전환
       </div>
     </div>
  
     <div class="st-columns">
-      <div class="st-col">
-        <div class="st-col-head st-col-exam">시험 <span id="stExamCount" class="st-col-cnt">0</span></div>
-        <div class="st-sub"><div class="st-sub-label">진행 중</div><div id="stExamNormal" class="card-grid g2 st-zone"></div></div>
-        <div class="st-sub st-sub-over"><div class="st-sub-label over">초과</div><div id="stExamOver" class="card-grid g2 st-zone"></div></div>
+      <div class="st-col st-col-exam">
+        <div class="st-col-head"><i class="ti ti-pencil"></i><span>시험</span><span id="stExamCount" class="st-col-cnt">0</span></div>
+        <div id="stExamOver" class="st-list st-over-zone"></div>
+        <div id="stExamNormal" class="st-list"></div>
+        <div id="stExamEmpty" class="st-empty">진행 중인 시험이 없습니다</div>
       </div>
-      <div class="st-col">
-        <div class="st-col-head st-col-outing">외출 <span id="stOutCount" class="st-col-cnt">0</span></div>
-        <div class="st-sub"><div class="st-sub-label">진행 중</div><div id="stOutNormal" class="card-grid g2 st-zone"></div></div>
-        <div class="st-sub st-sub-over"><div class="st-sub-label over">초과</div><div id="stOutOver" class="card-grid g2 st-zone"></div></div>
+      <div class="st-col st-col-outing">
+        <div class="st-col-head"><i class="ti ti-walk"></i><span>외출</span><span id="stOutCount" class="st-col-cnt">0</span></div>
+        <div id="stOutOver" class="st-list st-over-zone"></div>
+        <div id="stOutNormal" class="st-list"></div>
+        <div id="stOutEmpty" class="st-empty">외출 중인 학생이 없습니다</div>
       </div>
-    </div>
-    <div id="stEmpty" class="empty" style="display:none;margin-top:8px">
-      <div class="et">현재 진행 중인 학생이 없습니다</div>
-      <div class="es">시험/외출을 고르고 이름을 입력하면 카운트다운이 시작됩니다.</div>
-    </div>
- 
-    <div class="panel" style="margin-top:20px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-        <h3 style="font-size:14.5px;font-weight:700">기록 <span id="stLogCount" style="color:var(--ink-3);font-weight:500">0명</span></h3>
-        <div style="display:flex;gap:10px;align-items:center">
-          <input type="date" id="stDate" value="${startState.viewDate}" style="height:36px;padding:0 12px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface-2);font-size:14px">
-          <button class="btn sm" id="stCsvBtn">CSV 내려받기</button>
-        </div>
-      </div>
-      <div class="table-wrap"><div class="table-scroll">
-        <table class="grid">
-          <thead><tr><th>구분</th><th>이름</th><th>반</th><th>담임</th><th>시작</th><th>복귀</th><th>소요</th><th>결과</th><th></th></tr></thead>
-          <tbody id="stLogBody"></tbody>
-        </table>
-      </div></div>
     </div>`;
  
   startInjectStyles();
@@ -4149,309 +4130,101 @@ async function renderStart(){
   el('stInput').focus();
 }
  
-/* ---- 기본 시간(모드별) ---- */
-function startLimitSec(){
-  const sel = el('stMin');
-  if(!sel) return startMode==='exam' ? 600 : 900;
-  if(sel.value==='__auto__') return startMode==='exam' ? 600 : 900;   // 시험10분/외출15분
-  if(sel.value==='__custom__'){
-    const m = parseInt(el('stMinCustom').value,10);
-    return (m>0?m:(startMode==='exam'?10:15))*60;
-  }
-  return parseInt(sel.value,10)*60;
-}
-function startOnMinChange(){
-  const sel=el('stMin'), cust=el('stMinCustom');
-  cust.style.display = (sel.value==='__custom__')?'inline-block':'none';
-  if(sel.value==='__custom__') cust.focus();
-}
- 
-/* ---- 데이터 로드 ---- */
-async function startLoadSessions(dateStr){
-  if(!sb){ try{ initSupabase(); }catch(e){ console.error(e); return; } }
-  const { data, error } = await sb.from('start_sessions').select('*')
-    .eq('branch_id', session.branchId).eq('date', dateStr)
-    .order('left_at', { ascending:false });
-  if(error){ console.error(error); toast('기록 로드 실패','err'); return; }
-  const rows=(data||[]).map(startFromRow);
-  startState.active = rows.filter(r=>r.status==='out');
-  startState.logRows = rows.filter(r=>r.status==='returned');
-  startRenderCards(); startRenderLog(); startSyncOverlay();
-}
-function startFromRow(r){
-  return { id:r.id, studentId:r.student_id, name:r.name, cls:r.cls, teacher:r.teacher,
-    leftAt:r.left_at, returnedAt:r.returned_at, limitSec:r.limit_sec, status:r.status,
-    date:r.date, kind:r.kind||'outing', alarmCleared:!!r.alarm_cleared, alarmed:false };
-}
- 
-/* ---- 등록 ---- */
-async function startAdd(stu){
-  const info = startStudentInfo(stu);
-  if(startState.active.some(a=>a.studentId===stu.id)){ toast(`${info.name} 학생은 이미 진행 중입니다`,'err'); return; }
-  const limitSec = startLimitSec();
-  const row = {
-    branch_id: session.branchId, date: startTodayStr(),
-    student_id: stu.id, name: info.name, cls: info.cls, teacher: info.teacher,
-    left_at: new Date().toISOString(), returned_at: null, limit_sec: limitSec,
-    status:'out', kind: startMode, alarm_cleared:false, by_user: session.username,
-  };
-  const { data, error } = await sb.from('start_sessions').insert(row).select().single();
-  if(error){ console.error(error); toast('등록 실패 — 다시 시도하세요','err'); return; }
-  if(!startState.active.some(a=>a.id===data.id)){ startState.active.unshift(startFromRow(data)); startRenderCards(); }
-  el('stInput').value=''; el('stAc').style.display='none'; el('stInput').focus();
-  startUnlockAudio();
-}
- 
-async function startReturn(id){
-  const a = startState.active.find(x=>x.id===id); if(!a) return;
-  const ret = new Date().toISOString();
-  const { error } = await sb.from('start_sessions').update({ status:'returned', returned_at:ret }).eq('id', id);
-  if(error){ console.error(error); toast('복귀 처리 실패','err'); return; }
-  a.returnedAt=ret; a.status='returned';
-  startState.active = startState.active.filter(x=>x.id!==id);
-  startState.logRows.unshift(a);
-  startRenderCards(); startRenderLog(); startSyncOverlay();
-}
-async function startCancel(id){
-  const { error } = await sb.from('start_sessions').delete().eq('id', id);
-  if(error){ console.error(error); toast('취소 실패','err'); return; }
-  startState.active = startState.active.filter(x=>x.id!==id);
-  startRenderCards(); startSyncOverlay();
-}
- 
-/* ---- 경고 공유: 한 명이 확인 누르면 모두 꺼짐 ---- */
-async function startClearAlarm(){
-  // 지금 초과된 학생들의 alarm_cleared를 모두 true로
-  const now=new Date();
-  const overIds = startState.active.filter(a=>{
-    const el2=Math.floor((now-new Date(a.leftAt))/1000); return el2>=a.limitSec;
-  }).map(a=>a.id);
-  startCloseOverlay();
-  if(!overIds.length) return;
-  const { error } = await sb.from('start_sessions').update({ alarm_cleared:true }).in('id', overIds);
-  if(error){ console.error(error); return; }
-  overIds.forEach(id=>{ const a=startState.active.find(x=>x.id===id); if(a) a.alarmCleared=true; });
-}
- 
-/* ---- 실시간 ---- */
-function startSubscribe(){
-  if(startState.channel) sb.removeChannel(startState.channel);
-  startState.channel = sb.channel('start_'+session.branchId)
-    .on('postgres_changes',
-      { event:'*', schema:'public', table:'start_sessions', filter:`branch_id=eq.${session.branchId}` },
-      payload => startHandleRealtime(payload))
-    .subscribe();
-}
-function startHandleRealtime(payload){
-  if(payload.eventType==='DELETE'){
-    const oldId = payload.old && payload.old.id; if(!oldId) return;
-    startState.active = startState.active.filter(a=>a.id!==oldId);
-    startState.logRows = startState.logRows.filter(l=>l.id!==oldId);
-    startRenderCards(); startRenderLog(); startSyncOverlay();
-    return;
-  }
-  const row = payload.new;
-  if(!row || row.date!==startState.viewDate) return;
-  if(payload.eventType==='INSERT'){
-    const r=startFromRow(payload.new);
-    if(r.status==='out' && !startState.active.some(a=>a.id===r.id)){ startState.active.unshift(r); startRenderCards(); startSyncOverlay(); }
-  } else if(payload.eventType==='UPDATE'){
-    const r=startFromRow(payload.new);
-    // 복귀
-    if(r.status==='returned'){
-      startState.active = startState.active.filter(a=>a.id!==r.id);
-      if(!startState.logRows.some(l=>l.id===r.id)) startState.logRows.unshift(r);
-      startRenderCards(); startRenderLog(); startSyncOverlay(); return;
-    }
-    // 경고 확인 공유
-    const cur = startState.active.find(a=>a.id===r.id);
-    if(cur){ cur.alarmCleared = r.alarmCleared; startSyncOverlay(); }
-  }
-}
- 
-/* ---- 카드 렌더 (좌우 분리 + 초과 분리) ---- */
+/* ---- 카드(줄) 렌더 ---- */
 function startRenderCards(){
-  const zones = {
-    examNormal: el('stExamNormal'), examOver: el('stExamOver'),
-    outNormal:  el('stOutNormal'),  outOver:  el('stOutOver'),
-  };
+  const zones={ examOver:el('stExamOver'), examNormal:el('stExamNormal'),
+                outOver:el('stOutOver'), outNormal:el('stOutNormal') };
   if(!zones.examNormal) return;
   const now=new Date();
-  const buckets = { examNormal:[], examOver:[], outNormal:[], outOver:[] };
+  const b={examOver:[],examNormal:[],outOver:[],outNormal:[]};
   startState.active.forEach(a=>{
     const elapsed=Math.floor((now-new Date(a.leftAt))/1000);
-    const over = elapsed>=a.limitSec;
-    const exam = a.kind==='exam';
-    const key = (exam?'exam':'out') + (over?'Over':'Normal');
-    buckets[key].push(a);
+    const over=elapsed>=a.limitSec;
+    const key=(a.kind==='exam'?'exam':'out')+(over?'Over':'Normal');
+    b[key].push(a);
   });
-  Object.keys(zones).forEach(k=>{
-    zones[k].innerHTML = buckets[k].map(a=>startCardHTML(a)).join('');
-  });
-  el('stExamCount').textContent = buckets.examNormal.length+buckets.examOver.length;
-  el('stOutCount').textContent  = buckets.outNormal.length+buckets.outOver.length;
-  el('stEmpty').style.display = startState.active.length ? 'none':'block';
+  Object.keys(zones).forEach(k=> zones[k].innerHTML=b[k].map(startRowHTML).join(''));
+  const exam=b.examOver.length+b.examNormal.length;
+  const out=b.outOver.length+b.outNormal.length;
+  el('stExamCount').textContent=exam;
+  el('stOutCount').textContent=out;
+  el('stExamEmpty').style.display=exam?'none':'block';
+  el('stOutEmpty').style.display=out?'none':'block';
   startTick();
 }
-function startCardHTML(a){
-  const clsLine=[a.cls,a.teacher].filter(Boolean).join(' · ');
-  const tag = a.kind==='exam' ? '<span class="st-kind exam">시험</span>' : '<span class="st-kind outing">외출</span>';
-  return `<div class="card start-card" data-id="${a.id}">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
-      ${tag}<div class="card-name" style="font-size:24px">${esc(a.name)}</div>
+function startRowHTML(a){
+  const meta=[a.cls,a.teacher].filter(Boolean).join(' · ');
+  return `<div class="st-row" data-id="${a.id}">
+    <div class="st-row-info">
+      <div class="st-row-name">${esc(a.name)}<span class="st-row-badge">초과</span></div>
+      <div class="st-row-meta">${esc(meta||'—')} · 시작 ${startHM(a.leftAt)}</div>
     </div>
-    <div style="color:var(--brand);font-weight:600;font-size:13px;margin-bottom:3px">${esc(clsLine||'—')}</div>
-    <div style="color:var(--ink-3);font-size:12px;margin-bottom:8px">시작 · <b>${startHM(a.leftAt)}</b></div>
-    <div class="st-timer" style="font-size:40px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--pos);line-height:1">00:00</div>
-    <div class="st-bar" style="height:6px;background:var(--surface-2);border-radius:4px;margin-top:8px;overflow:hidden"><i style="display:block;height:100%;background:var(--pos);width:100%"></i></div>
-    <div class="st-status" style="font-size:12px;color:var(--ink-3);margin-top:6px"></div>
-    <div style="display:flex;gap:8px;margin-top:12px">
-      <button class="btn primary sm" style="flex:1" onclick="startReturn('${a.id}')">복귀</button>
-      <button class="btn sm" style="flex:1" onclick="startCancel('${a.id}')">취소</button>
+    <div class="st-row-timer">00:00</div>
+    <div class="st-row-acts">
+     <button class="st-mini ret" onclick="startReturn('${a.id}')" title="${a.kind==='exam'?'시험완료':'복귀'}"><i class="ti ti-check"></i></button>
+      <button class="st-mini can" onclick="startCancel('${a.id}')" title="취소"><i class="ti ti-x"></i></button>
     </div>
   </div>`;
 }
 function startStartTicker(){ if(startState.ticker) clearInterval(startState.ticker); startState.ticker=setInterval(startTick,1000); }
 function startTick(){
-  const now=new Date();
-  let needReflow=false;
+  const now=new Date(); let reflow=false;
   startState.active.forEach(a=>{
-    const card=document.querySelector(`.start-card[data-id="${a.id}"]`);
     const elapsed=Math.floor((now-new Date(a.leftAt))/1000);
     const remain=a.limitSec-elapsed;
-    const wasOver = a._over===true;
-    const isOver = remain<=0;
-    if(wasOver!==isOver){ a._over=isOver; needReflow=true; }
-    if(!card) return;
-    const timerEl=card.querySelector('.st-timer');
-    const barEl=card.querySelector('.st-bar > i');
-    const statusEl=card.querySelector('.st-status');
+    const isOver=remain<=0;
+    if(a._over!==isOver){ a._over=isOver; reflow=true; }
+    const row=document.querySelector(`.st-row[data-id="${a.id}"]`);
+    if(!row) return;
+    const t=row.querySelector('.st-row-timer');
     if(remain>0){
-      timerEl.textContent=startDur(remain);
-      timerEl.style.color = remain<=180?'var(--warn)':'var(--pos)';
-      statusEl.textContent='남은 시간';
-      barEl.style.width=Math.max(0,(remain/a.limitSec)*100)+'%';
-      barEl.style.background = remain<=180?'var(--warn)':'var(--pos)';
-      card.classList.remove('st-over-card');
+      t.textContent=startDur(remain);
+      t.style.color=remain<=180?'var(--warn)':'var(--pos)';
+      row.classList.remove('over');
     } else {
-      timerEl.textContent='+'+startDur(elapsed-a.limitSec);
-      timerEl.style.color='var(--neg)';
-      statusEl.textContent='초과 · 복귀 확인 필요';
-      barEl.style.width='100%'; barEl.style.background='var(--neg)';
-      card.classList.add('st-over-card');
+      t.textContent='+'+startDur(elapsed-a.limitSec);
+      t.style.color='#fff';
+      row.classList.add('over');
       if(!a.alarmed && !a.alarmCleared){ a.alarmed=true; startFireAlarm(a); }
     }
   });
-  if(needReflow) startRenderCards();  // 초과되면 초과 구역으로 이동
+  if(reflow) startRenderCards();
 }
  
-/* ---- 초과 알림 ---- */
-function startFireAlarm(a){
-  startBeep();
-  startSystemNotify(a.name, a.limitSec);
-  startShowOverlay();
-}
- 
-/* ---- 오버레이 (실시간 공유) ---- */
-function startShowOverlay(){
-  let ov=document.getElementById('stOverlay');
-  if(!ov){
-    ov=document.createElement('div'); ov.id='stOverlay';
-    ov.innerHTML=`<div class="st-ov-inner">
-      <div class="st-ov-tag"><i class="ti ti-clock-exclamation" style="font-size:18px"></i>시간 초과</div>
-      <div class="st-ov-names" id="stOvNames"></div>
-      <div class="st-ov-sub">복귀 확인이 필요합니다</div>
-      <button class="st-ov-btn" onclick="startClearAlarm()">확인했습니다</button>
-    </div>`;
-    document.body.appendChild(ov);
-  }
-  startUpdateOverlay();
-  ov.style.display='flex';
-}
-function startUpdateOverlay(){
-  const box=document.getElementById('stOvNames'); if(!box) return;
-  const now=new Date();
-  const over=startState.active.filter(a=>{
-    const e=Math.floor((now-new Date(a.leftAt))/1000);
-    return e>=a.limitSec && !a.alarmCleared;
-  });
-  if(!over.length){ startCloseOverlay(); return; }
-  box.innerHTML=over.map(a=>{
-    const e=Math.floor((now-new Date(a.leftAt))/1000);
-    const k=a.kind==='exam'?'시험':'외출';
-    return `<div class="st-ov-row"><span class="st-ov-name">${esc(a.name)}</span><span class="st-ov-over">${k} +${startDur(e-a.limitSec)}</span></div>`;
-  }).join('');
-}
-function startCloseOverlay(){ const ov=document.getElementById('stOverlay'); if(ov) ov.style.display='none'; }
-/* 상태에 맞춰 오버레이를 열지/닫을지 동기화 (실시간 반영용) */
-function startSyncOverlay(){
-  const now=new Date();
-  const anyOver = startState.active.some(a=>{
-    const e=Math.floor((now-new Date(a.leftAt))/1000);
-    return e>=a.limitSec && !a.alarmCleared;
-  });
-  if(anyOver) startShowOverlay(); else startCloseOverlay();
-}
- 
-/* ---- 소리 (기존 유지) ---- */
-let startAudioCtx=null;
-function startUnlockAudio(){ if(startAudioCtx && startAudioCtx.state==='suspended') startAudioCtx.resume(); }
-function startBeep(){
-  if(startState.muted) return;
-  try{
-    startAudioCtx=startAudioCtx||new (window.AudioContext||window.webkitAudioContext)();
-    let t=startAudioCtx.currentTime;
-    for(let i=0;i<3;i++){
-      const o=startAudioCtx.createOscillator(),g=startAudioCtx.createGain();
-      o.connect(g);g.connect(startAudioCtx.destination);
-      o.type='square';o.frequency.value=i%2?660:880;
-      g.gain.setValueAtTime(0.001,t);g.gain.exponentialRampToValueAtTime(0.25,t+0.02);
-      g.gain.exponentialRampToValueAtTime(0.001,t+0.3);
-      o.start(t);o.stop(t+0.32);t+=0.34;
-    }
-  }catch(e){}
-}
- 
-/* ---- 기록 표 ---- */
-function startRenderLog(){
-  const body=el('stLogBody'); if(!body) return;
-  el('stLogCount').textContent=startState.logRows.length+'명';
-  body.innerHTML=startState.logRows.map(r=>{
-    const elapsed=r.returnedAt?Math.round((new Date(r.returnedAt)-new Date(r.leftAt))/1000):null;
-    const over=elapsed!=null && elapsed>r.limitSec;
+/* ---- 기록 팝업 ---- */
+function startOpenLogModal(){
+  const rows=startState.logRows;
+  const body=rows.length? rows.map(r=>{
+    const el2=r.returnedAt?Math.round((new Date(r.returnedAt)-new Date(r.leftAt))/1000):null;
+    const over=el2!=null&&el2>r.limitSec;
     const k=r.kind==='exam'?'시험':'외출';
-    return `<tr>
-      <td>${k}</td>
-      <td class="st-name">${esc(r.name)}</td>
-      <td>${esc(r.cls||'—')}</td>
-      <td>${esc(r.teacher||'—')}</td>
-      <td class="num">${startHM(r.leftAt)}</td>
-      <td class="num">${r.returnedAt?startHM(r.returnedAt):'—'}</td>
-      <td class="num">${elapsed!=null?startDur(elapsed):'—'}</td>
+    return `<tr><td>${k}</td><td>${esc(r.name)}</td><td>${esc(r.cls||'—')}</td><td>${esc(r.teacher||'—')}</td>
+      <td class="num">${startHM(r.leftAt)}</td><td class="num">${r.returnedAt?startHM(r.returnedAt):'—'}</td>
+      <td class="num">${el2!=null?startDur(el2):'—'}</td>
       <td style="font-weight:700;color:${over?'var(--neg)':'var(--pos)'}">${over?'초과':'정상'}</td>
-      <td class="cc"><button class="btn sm" style="color:var(--neg)" onclick="startDeleteLog('${r.id}')">삭제</button></td>
-    </tr>`;
-  }).join('');
-}
-function startDownloadCSV(){
-  if(!startState.logRows.length){ toast('기록이 없습니다','err'); return; }
-  const rows=[['구분','이름','반','담임','시작','복귀','소요(분:초)','제한(분)','결과']];
-  startState.logRows.slice().reverse().forEach(r=>{
-    const elapsed=r.returnedAt?Math.round((new Date(r.returnedAt)-new Date(r.leftAt))/1000):null;
-    const over=elapsed!=null && elapsed>r.limitSec;
-    rows.push([r.kind==='exam'?'시험':'외출', r.name, r.cls||'', r.teacher||'', startHM(r.leftAt),
-      r.returnedAt?startHM(r.returnedAt):'', elapsed!=null?startDur(elapsed):'', Math.round(r.limitSec/60), over?'초과':'정상']);
-  });
-  const csv='\uFEFF'+rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
-  const blob=new Blob([csv],{type:'text/csv'});
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);
-  a.download=`STaRT_${getBranch(session.branchId)?.name||session.branchId}_${startState.viewDate}.csv`;
-  a.click();
+      <td class="cc"><button class="btn sm" style="color:var(--neg)" onclick="startDeleteLog('${r.id}')">삭제</button></td></tr>`;
+  }).join('') : `<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--ink-3)">기록이 없습니다</td></tr>`;
+ 
+  openModal(`
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <h3 style="font-size:16px;font-weight:800">기록 <span style="color:var(--ink-3);font-weight:500">${rows.length}명</span></h3>
+      <div style="display:flex;gap:10px;align-items:center">
+        <input type="date" id="stDate" value="${startState.viewDate}" class="st-inp" style="height:34px">
+        <button class="btn sm" id="stCsvBtn">CSV</button>
+      </div>
+    </div>
+    <div class="table-wrap"><div class="table-scroll" style="max-height:60vh">
+      <table class="grid">
+        <thead><tr><th>구분</th><th>이름</th><th>반</th><th>담임</th><th>시작</th><th>복귀</th><th>소요</th><th>결과</th><th></th></tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div></div>`, {wide:true});
+ 
+  const d=el('stDate'); if(d) d.onchange=()=>{ startState.viewDate=d.value; startLoadSessions(startState.viewDate).then(()=>startOpenLogModal()); };
+  const c=el('stCsvBtn'); if(c) c.onclick=startDownloadCSV;
 }
  
-/* ---- 입력/자동완성 + 키보드 ---- */
-let startAcList=[], startAcSel=-1;
+/* ---- 이벤트 바인딩 ---- */
 function startBindUI(){
   const input=el('stInput');
   input.addEventListener('input', startOnInput);
@@ -4459,22 +4232,19 @@ function startBindUI(){
   el('stAddBtn').onclick=()=>{
     const m=startFindStudents(input.value);
     if(m.length===1) startAdd(m[0]);
-    else if(m.length>1){ startOnInput(); toast('여러 명이 검색됩니다. ↑↓로 선택하세요'); }
+    else if(m.length>1){ startOnInput(); toast('여러 명 검색됨 — ↑↓로 선택'); }
     else toast('일치하는 학생이 없습니다','err');
   };
   el('stMuteBtn').onclick=()=>{ startState.muted=!startState.muted; el('stMuteBtn').textContent=startState.muted?'🔇':'🔊'; };
   el('stPermBtn').onclick=startAskPerm;
-  el('stDate').onchange=()=>{ startState.viewDate=el('stDate').value; startLoadSessions(startState.viewDate); };
-  el('stCsvBtn').onclick=startDownloadCSV;
-  // 모드 토글 (마우스)
-  el('stModeTog').querySelectorAll('.st-mode-btn').forEach(b=>{
-    b.onclick=()=> startSetMode(b.dataset.mode);
-  });
+  el('stLogBtn').onclick=startOpenLogModal;
+  el('stModeTog').querySelectorAll('.st-mode-btn').forEach(btn=> btn.onclick=()=>startSetMode(btn.dataset.mode));
   document.addEventListener('click', startDocClick);
 }
 function startSetMode(mode){
-  startMode = mode;
-  el('stModeTog').querySelectorAll('.st-mode-btn').forEach(b=> b.classList.toggle('active', b.dataset.mode===mode));
+  startMode=mode;
+  const tog=el('stModeTog'); if(!tog) return;
+  tog.querySelectorAll('.st-mode-btn').forEach(b=> b.classList.toggle('active', b.dataset.mode===mode));
 }
 function startDocClick(e){
   const ac=el('stAc'), input=el('stInput'); if(!ac||!input) return;
@@ -4482,7 +4252,7 @@ function startDocClick(e){
 }
 function startOnInput(){
   const q=el('stInput').value, box=el('stAc');
-  if(!q.trim()){ box.style.display='none'; startAcList=[]; return; }
+  if(!q.trim()){ box.style.display='none'; startAcList=[]; startAcSel=-1; return; }
   startAcList=startFindStudents(q); startAcSel=-1;
   if(!startAcList.length){ box.innerHTML=`<div class="wd-empty">일치하는 학생이 없습니다</div>`; box.style.display='block'; return; }
   box.innerHTML=startAcList.map((s,i)=>{
@@ -4495,24 +4265,24 @@ function startOnInput(){
 }
 function startOnKeydown(e){
   const box=el('stAc');
-  // ←→ 로 시험/외출 전환 (자동완성 안 떠 있을 때, 혹은 입력 비었을 때)
-  if((e.key==='ArrowLeft'||e.key==='ArrowRight') && box.style.display!=='block'){
-    e.preventDefault(); startSetMode(startMode==='exam'?'outing':'exam'); return;
-  }
-  if(box.style.display!=='block' || !startAcList.length){
-    if(e.key==='Enter'){
-      const m=startFindStudents(el('stInput').value);
-      if(m.length===1) startAdd(m[0]);
-      else if(m.length>1) startOnInput();
-      else toast('일치하는 학생이 없습니다','err');
-    }
+  const open = box.style.display==='block' && startAcList.length>0;
+  if(e.key==='ArrowDown'){ if(open){ e.preventDefault(); startAcSel=Math.min(startAcSel+1,startAcList.length-1); startUpdateAcSel(); } return; }
+  if(e.key==='ArrowUp'){ if(open){ e.preventDefault(); startAcSel=Math.max(startAcSel-1,0); startUpdateAcSel(); } return; }
+  if(e.key==='ArrowLeft'||e.key==='ArrowRight'){
+    // 입력창이 비어있을 때만 시험/외출 전환 (글자 있으면 커서 이동 방해 안 함)
+    if(!el('stInput').value){ e.preventDefault(); startSetMode(startMode==='exam'?'outing':'exam'); }
     return;
   }
-  if(e.key==='ArrowDown'){ e.preventDefault(); startAcSel=Math.min(startAcSel+1,startAcList.length-1); startUpdateAcSel(); }
-  else if(e.key==='ArrowUp'){ e.preventDefault(); startAcSel=Math.max(startAcSel-1,0); startUpdateAcSel(); }
-  else if(e.key==='ArrowLeft'||e.key==='ArrowRight'){ e.preventDefault(); startSetMode(startMode==='exam'?'outing':'exam'); }
-  else if(e.key==='Enter'){ e.preventDefault(); if(startAcSel>=0) startAdd(startAcList[startAcSel]); else if(startAcList.length===1) startAdd(startAcList[0]); }
-  else if(e.key==='Escape'){ box.style.display='none'; }
+  if(e.key==='Enter'){
+    e.preventDefault();
+    if(open && startAcSel>=0){ startAdd(startAcList[startAcSel]); return; }
+    const m=startFindStudents(el('stInput').value);
+    if(m.length===1) startAdd(m[0]);
+    else if(m.length>1) startOnInput();
+    else toast('일치하는 학생이 없습니다','err');
+    return;
+  }
+  if(e.key==='Escape'){ box.style.display='none'; }
 }
 function startUpdateAcSel(){
   el('stAc').querySelectorAll('.wd-item').forEach((it,i)=>{
@@ -4521,42 +4291,42 @@ function startUpdateAcSel(){
   });
 }
  
-/* ---- 알림 권한 ---- */
-function startRefreshPermHint(){
-  const hint=el('stPermHint'); if(!hint) return;
-  hint.style.display = (('Notification' in window)&&Notification.permission==='default')?'block':'none';
-}
-function startAskPerm(){
-  if(!('Notification' in window)){ toast('이 브라우저는 알림을 지원하지 않습니다','err'); return; }
-  Notification.requestPermission().then(p=>{
-    startRefreshPermHint();
-    if(p==='granted') toast('알림이 허용되었습니다','ok');
-    else toast('알림이 차단됨 — 주소창 자물쇠 아이콘에서 허용하세요','err');
-  });
-}
- 
-/* ---- 스타일 주입 ---- */
+/* ---- 스타일 ---- */
 function startInjectStyles(){
-  if(document.getElementById('stV3Style')) return;
-  const st=document.createElement('style'); st.id='stV3Style';
+  const old=document.getElementById('stV3Style'); if(old) old.remove();
+  if(document.getElementById('stV4Style')) return;
+  const st=document.createElement('style'); st.id='stV4Style';
   st.textContent=`
-    .st-columns{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-    .st-col{background:var(--surface-1);border-radius:12px;padding:12px}
-    .st-col-head{font-size:15px;font-weight:800;padding:6px 8px 12px;display:flex;align-items:center;gap:8px}
-    .st-col-exam{color:#185FA5}.st-col-outing{color:#0F6E56}
-    .st-col-cnt{background:var(--surface-2);border-radius:999px;font-size:12px;font-weight:700;padding:2px 10px;color:var(--ink-2)}
-    .st-sub{margin-bottom:10px}
-    .st-sub-label{font-size:11px;font-weight:700;color:var(--ink-3);letter-spacing:1px;margin:2px 4px 8px}
-    .st-sub-label.over{color:var(--neg)}
-    .st-zone{min-height:8px}
-    .card-grid.g2{grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}
-    .st-kind{font-size:11px;font-weight:800;padding:2px 8px;border-radius:6px}
-    .st-kind.exam{background:#E6F1FB;color:#185FA5}
-    .st-kind.outing{background:#E1F5EE;color:#0F6E56}
-    .st-over-card{border-color:var(--neg)!important;animation:stFlash .9s infinite}
-    @keyframes stFlash{0%,100%{background:var(--surface)}50%{background:#3a1414}}
+    .st-columns{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    .st-col{border-radius:14px;padding:12px}
+    .st-col-exam{background:#F4F8FD;border:1px solid #D3E4F5}
+    .st-col-outing{background:#F3FAF6;border:1px solid #C9E9DC}
+    .st-col-head{display:flex;align-items:center;gap:8px;padding:2px 4px 12px;margin-bottom:12px;font-size:16px;font-weight:800;border-bottom:1px solid rgba(0,0,0,.06)}
+    .st-col-exam .st-col-head{color:#0C447C}.st-col-exam .st-col-head i{color:#185FA5}
+    .st-col-outing .st-col-head{color:#085041}.st-col-outing .st-col-head i{color:#0F6E56}
+    .st-col-cnt{margin-left:auto;font-size:13px;font-weight:700;border-radius:999px;padding:2px 10px}
+    .st-col-exam .st-col-cnt{background:#E6F1FB;color:#185FA5}
+    .st-col-outing .st-col-cnt{background:#E1F5EE;color:#0F6E56}
+    .st-list{display:flex;flex-direction:column;gap:8px}
+    .st-over-zone{margin-bottom:0}
+    .st-over-zone:not(:empty){margin-bottom:8px}
+    .st-empty{text-align:center;color:var(--ink-3);font-size:13px;padding:24px 0}
+    .st-row{display:flex;align-items:center;gap:12px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:9px 12px}
+    .st-row-info{flex:1;min-width:0}
+    .st-row-name{font-size:16px;font-weight:700;color:var(--ink-1);display:flex;align-items:center;gap:6px}
+    .st-row-badge{display:none;font-size:11px;font-weight:800;color:#fff;background:var(--neg);border-radius:5px;padding:1px 7px}
+    .st-row-meta{font-size:12px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .st-row-timer{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--pos);letter-spacing:-.5px;min-width:64px;text-align:right}
+    .st-row-acts{display:flex;gap:6px}
+    .st-mini{height:32px;padding:0 12px;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;white-space:nowrap}
+    .st-mini.ret{background:var(--brand);color:#fff}
+    .st-mini.can{background:var(--surface-1);color:var(--ink-3);border:1px solid var(--line)}
+    .st-row.over{background:#FCEEEE;border-color:var(--neg);animation:stFlash .9s infinite}
+    .st-row.over .st-row-badge{display:inline-block}
+    @keyframes stFlash{0%,100%{background:#FCEEEE}50%{background:#f7dede}}
+    .st-inp{height:40px;padding:0 12px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface-2);font-size:15px}
     .st-modetog{display:inline-flex;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden;height:40px}
-    .st-mode-btn{border:none;background:transparent;padding:0 18px;font-size:15px;font-weight:700;color:var(--ink-3);cursor:pointer}
+    .st-mode-btn{border:none;background:transparent;padding:0 16px;font-size:15px;font-weight:700;color:var(--ink-3);cursor:pointer;display:flex;align-items:center;gap:6px}
     .st-mode-btn.active{background:var(--brand);color:#fff}
     #stOverlay{position:fixed;inset:0;z-index:9999;background:#1a1416;display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;animation:stOvIn .25s ease-out}
     @keyframes stOvIn{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:scale(1)}}
