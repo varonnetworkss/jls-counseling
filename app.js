@@ -4053,6 +4053,16 @@ function clearNsClass(){
   if(search){ search.value=''; search.focus(); }
   renderMsgCard();
 }
+let startState = {
+  active: [],
+  logRows: [],
+  viewDate: null,
+  channel: null,
+  ticker: null,
+  muted: false,
+};
+
+let startMode = 'outing';
 /* ---- 메인 렌더 ---- */
 async function renderStart(){
   crumbs([{label:'STaRT 외출·시험 관리'}]);
