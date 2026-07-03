@@ -4612,3 +4612,133 @@ function startDownloadCSV(){
   a.download=`STaRT_${getBranch(session.branchId)?.name||session.branchId}_${startState.viewDate}.csv`;
   a.click();
 }
+function startRowHTML(a){
+  const meta=[a.cls,a.teacher].filter(Boolean).join(' · ');
+  const doneLabel = a.kind==='exam' ? '시험완료' : '복귀';
+  return `<div class="st-row" data-id="${a.id}">
+    <div class="st-row-info">
+      <div class="st-row-name">${esc(a.name)}<span class="st-row-badge">초과</span></div>
+      <div class="st-row-meta">${esc(meta||'—')} · 시작 ${startHM(a.leftAt)}</div>
+    </div>
+    <div class="st-row-timer">00:00</div>
+    <div class="st-row-acts">
+      <button class="st-mini ret" onclick="startReturn('${a.id}')">${doneLabel}</button>
+      <button class="st-mini can" onclick="startCancel('${a.id}')">취소</button>
+    </div>
+  </div>`;
+}
+ 
+function startOnKeydown(e){
+  const box=el('stAc');
+  const open = box && box.style.display==='block' && startAcList.length>0;
+  if(e.key==='ArrowDown'){
+    if(open){ e.preventDefault(); startAcSel=Math.min(startAcSel+1,startAcList.length-1); startUpdateAcSel(); }
+    return;
+  }
+  if(e.key==='ArrowUp'){
+    if(open){ e.preventDefault(); startAcSel=Math.max(startAcSel-1,0); startUpdateAcSel(); }
+    return;
+  }
+  if(e.key==='ArrowLeft' || e.key==='ArrowRight'){
+    if(!el('stInput').value){ e.preventDefault(); startSetMode(startMode==='exam'?'outing':'exam'); }
+    return;
+  }
+  if(e.key==='Enter'){
+    e.preventDefault();
+    if(open && startAcSel>=0){ startAdd(startAcList[startAcSel]); return; }
+    const m=startFindStudents(el('stInput').value);
+    if(m.length===1) startAdd(m[0]);
+    else if(m.length>1) startOnInput();
+    else toast('일치하는 학생이 없습니다','err');
+    return;
+  }
+  if(e.key==='Escape'){ if(box) box.style.display='none'; }
+}
+ 
+function startOpenLogModal(){
+  const rows=startState.logRows;
+  const body=rows.length? rows.map(r=>{
+    const el2=r.returnedAt?Math.round((new Date(r.returnedAt)-new Date(r.leftAt))/1000):null;
+    const over=el2!=null&&el2>r.limitSec;
+    const k=r.kind==='exam'?'시험':'외출';
+    return `<tr><td>${k}</td><td style="font-weight:700">${esc(r.name)}</td><td>${esc(r.cls||'—')}</td><td>${esc(r.teacher||'—')}</td>
+      <td class="num">${startHM(r.leftAt)}</td><td class="num">${r.returnedAt?startHM(r.returnedAt):'—'}</td>
+      <td class="num">${el2!=null?startDur(el2):'—'}</td>
+      <td style="font-weight:700;color:${over?'var(--neg)':'var(--pos)'}">${over?'초과':'정상'}</td>
+      <td class="cc"><button class="btn sm" style="color:var(--neg)" onclick="startDeleteLog('${r.id}')">삭제</button></td></tr>`;
+  }).join('') : `<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--ink-3)">기록이 없습니다</td></tr>`;
+ 
+  openModal(`
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <h3 style="font-size:18px;font-weight:800">기록 <span style="color:var(--ink-3);font-weight:500;font-size:15px">${rows.length}명</span></h3>
+      <div style="display:flex;gap:10px;align-items:center">
+        <input type="date" id="stDate" value="${startState.viewDate}" class="st-inp" style="height:36px">
+        <button class="btn sm" id="stCsvBtn">CSV 내려받기</button>
+      </div>
+    </div>
+    <table class="grid" style="width:100%">
+      <thead><tr><th>구분</th><th>이름</th><th>반</th><th>담임</th><th>시작</th><th>복귀</th><th>소요</th><th>결과</th><th></th></tr></thead>
+      <tbody>${body}</tbody>
+    </table>`, {wide:true});
+ 
+  const d=el('stDate'); if(d) d.onchange=()=>{ startState.viewDate=d.value; startLoadSessions(startState.viewDate).then(()=>startOpenLogModal()); };
+  const c=el('stCsvBtn'); if(c) c.onclick=startDownloadCSV;
+ 
+  // 팝업을 넓게 강제 (JLS 모달이 좁을 경우 대비)
+  setTimeout(()=>{
+    const mb=document.getElementById('modalBox');
+    if(mb){ mb.style.maxWidth='min(1100px,94vw)'; mb.style.width='min(1100px,94vw)'; }
+  },0);
+}
+ 
+function startInjectStyles(){
+  const old3=document.getElementById('stV3Style'); if(old3) old3.remove();
+  const old4=document.getElementById('stV4Style'); if(old4) old4.remove();
+  if(document.getElementById('stV5Style')) return;
+  const st=document.createElement('style'); st.id='stV5Style';
+  st.textContent=`
+    .st-columns{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    .st-col{border-radius:14px;padding:12px}
+    .st-col-exam{background:#F4F8FD;border:1px solid #D3E4F5}
+    .st-col-outing{background:#F3FAF6;border:1px solid #C9E9DC}
+    .st-col-head{display:flex;align-items:center;gap:8px;padding:2px 4px 12px;margin-bottom:12px;font-size:16px;font-weight:800;border-bottom:1px solid rgba(0,0,0,.06)}
+    .st-col-exam .st-col-head{color:#0C447C}.st-col-exam .st-col-head i{color:#185FA5}
+    .st-col-outing .st-col-head{color:#085041}.st-col-outing .st-col-head i{color:#0F6E56}
+    .st-col-cnt{margin-left:auto;font-size:13px;font-weight:700;border-radius:999px;padding:2px 10px}
+    .st-col-exam .st-col-cnt{background:#E6F1FB;color:#185FA5}
+    .st-col-outing .st-col-cnt{background:#E1F5EE;color:#0F6E56}
+    .st-list{display:flex;flex-direction:column;gap:8px}
+    .st-over-zone:not(:empty){margin-bottom:8px}
+    .st-empty{text-align:center;color:var(--ink-3);font-size:13px;padding:24px 0}
+    .st-row{display:flex;align-items:center;gap:12px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:9px 12px}
+    .st-row-info{flex:1;min-width:0}
+    .st-row-name{font-size:16px;font-weight:700;color:var(--ink-1);display:flex;align-items:center;gap:6px}
+    .st-row-badge{display:none;font-size:11px;font-weight:800;color:#fff;background:var(--neg);border-radius:5px;padding:1px 7px}
+    .st-row-meta{font-size:12px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .st-row-timer{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--pos);letter-spacing:-.5px;min-width:64px;text-align:right}
+    .st-row-acts{display:flex;gap:6px;flex-shrink:0}
+    .st-mini{height:34px;padding:0 14px;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;white-space:nowrap}
+    .st-mini.ret{background:var(--brand);color:#fff}
+    .st-mini.can{background:var(--surface-1);color:var(--ink-3);border:1px solid var(--line)}
+    .st-row.over{background:#FCEEEE;border-color:var(--neg);animation:stFlash .9s infinite}
+    .st-row.over .st-row-badge{display:inline-block}
+    @keyframes stFlash{0%,100%{background:#FCEEEE}50%{background:#f7dede}}
+    .st-inp{height:40px;padding:0 12px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface-2);font-size:15px}
+    .st-modetog{display:inline-flex;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden;height:40px}
+    .st-mode-btn{border:none;background:transparent;padding:0 16px;font-size:15px;font-weight:700;color:var(--ink-3);cursor:pointer;display:flex;align-items:center;gap:6px}
+    .st-mode-btn.active{background:var(--brand);color:#fff}
+    .wd-item.sel{background:var(--surface-1);outline:2px solid var(--brand);outline-offset:-2px}
+    #stOverlay{position:fixed;inset:0;z-index:9999;background:#1a1416;display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;animation:stOvIn .25s ease-out}
+    @keyframes stOvIn{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:scale(1)}}
+    #stOverlay::before{content:'';position:absolute;top:0;left:0;right:0;height:4px;background:#c0392b}
+    .st-ov-tag{display:inline-flex;align-items:center;gap:8px;background:rgba(192,57,43,.15);border:1px solid rgba(192,57,43,.5);border-radius:999px;padding:7px 18px;margin-bottom:28px;font-size:14px;font-weight:500;color:#e8a0a0;letter-spacing:2px}
+    .st-ov-names{display:flex;flex-direction:column;gap:14px;margin-bottom:28px}
+    .st-ov-row{display:flex;align-items:center;justify-content:center;gap:16px;flex-wrap:wrap}
+    .st-ov-name{font-size:52px;font-weight:500;color:#fff;line-height:1;letter-spacing:-1px}
+    .st-ov-over{font-size:15px;font-weight:500;color:#1a1416;background:#e74c3c;border-radius:8px;padding:5px 12px}
+    .st-ov-sub{font-size:16px;color:rgba(255,255,255,.6);margin-bottom:32px}
+    .st-ov-btn{background:#fff;color:#1a1416;border:none;border-radius:12px;font-size:17px;font-weight:500;padding:14px 48px;cursor:pointer}
+    .st-ov-btn:hover{opacity:.9}
+    @media(max-width:900px){.st-columns{grid-template-columns:1fr}}`;
+  document.head.appendChild(st);
+}
