@@ -4053,101 +4053,27 @@ function clearNsClass(){
   if(search){ search.value=''; search.focus(); }
   renderMsgCard();
 }
-/* ============================================================================
-   ★ STaRT 외출관리 — 분원 전용
-   - 기존 sb(Supabase), db, session 재사용
-   - 외출 기록은 start_sessions 새 테이블에 저장 (start_setup.sql 먼저 실행)
-   - 여러 선생님 실시간 동기화 + 15분 초과 시 모든 화면에 시스템 알림
-   ============================================================================ */
-let startState = {
-  active: [],        // 외출 중 세션
-  logRows: [],       // 완료 기록 (선택 날짜)
-  viewDate: null,    // 'YYYY-MM-DD'
-  channel: null,     // realtime 구독
-  ticker: null,      // 1초 타이머
-  muted: false,
-  bound: false,      // 입력 이벤트 바인딩 여부
-};
-
-/* 반 원본(class_name)에서 레벨코드만: "[PA2]SU3/MWF/..." -> "PA2" */
-function startLevelOf(raw){
-  const m = String(raw||'').match(/^\s*\[([A-Za-z]+[0-9]*)/);
-  return m ? m[1] : '';
-}
-/* class_label의 · 앞부분 (예: "월수금 3부") */
-function startTimeLabelOf(label){
-  if(!label) return '';
-  const p = String(label).split('·');
-  return p[0] ? p[0].trim() : '';
-}
-/* 현재 학기 이 분원의 학생 → {level, timeLabel, teacher} 매핑 */
-function startRecMap(){
-  const branchId = session.branchId, semId = state.semId;
-  const map = new Map();
-  db.semesterRecords
-    .filter(r=>r.branchId===branchId && r.semesterId===semId)
-    .forEach(r=>{
-      const prev = map.get(r.studentId);
-      if(prev && prev.status==='active' && r.status!=='active') return;
-      map.set(r.studentId, {
-        level: startLevelOf(r.className),
-        timeLabel: startTimeLabelOf(r.classLabel),
-        teacher: r.teacher||'',
-        status: r.status,
-      });
-    });
-  return map;
-}
-/* 학생 검색 (이름/회원코드) — 이 분원 명단 안에서만 */
-function startFindStudents(query){
-  const q = query.trim().toLowerCase();
-  if(!q) return [];
-  const branchId = session.branchId, semId = state.semId;
-  const myStudentIds = new Set(
-    db.semesterRecords.filter(r=>r.branchId===branchId && r.semesterId===semId).map(r=>r.studentId)
-  );
-  return db.students
-    .filter(s=> myStudentIds.has(s.id) &&
-      ((s.name||'').toLowerCase().includes(q) || (s.code||'').toLowerCase().includes(q)))
-    .slice(0,8);
-}
-function startStudentInfo(stu){
-  const rec = startRecMap().get(stu.id) || {};
-  const cls = [rec.timeLabel, rec.level].filter(Boolean).join(' ');
-  return { id:stu.id, code:stu.code, name:stu.name, cls, teacher:rec.teacher||'' };
-}
-
-/* ---- 시간 헬퍼 ---- */
-function startPad(n){ return String(n).padStart(2,'0'); }
-function startTodayStr(){ const d=new Date(); return `${d.getFullYear()}-${startPad(d.getMonth()+1)}-${startPad(d.getDate())}`; }
-function startHM(iso){ const d=new Date(iso); return `${startPad(d.getHours())}:${startPad(d.getMinutes())}`; }
-function startDur(sec){ const neg=sec<0; sec=Math.abs(sec); return (neg?'-':'')+startPad(Math.floor(sec/60))+':'+startPad(sec%60); }
-
-/* row 매핑 */
-function startFromRow(r){
-  return { id:r.id, studentId:r.student_id, name:r.name, cls:r.cls, teacher:r.teacher,
-    leftAt:r.left_at, returnedAt:r.returned_at, limitSec:r.limit_sec, status:r.status,
-    date:r.date, alarmed:false };
-}
-
-/* ============================================================================
-   메인 렌더
-   ============================================================================ */
+/* ---- 메인 렌더 ---- */
 async function renderStart(){
-  crumbs([{label:'STaRT 외출관리'}]);
+  crumbs([{label:'STaRT 외출·시험 관리'}]);
   if(!startState.viewDate) startState.viewDate = startTodayStr();
-
+ 
   el('content').innerHTML = `
     <div class="page-head">
-      <h2>STaRT 외출관리</h2>
-      <div class="sub">${esc(getBranch(session.branchId)?.name||'')} · 15분 외출 타이머 · 여러 선생님 실시간 공유</div>
+      <h2>STaRT 외출·시험 관리</h2>
+      <div class="sub">${esc(getBranch(session.branchId)?.name||'')} · 시험 10분 · 외출 15분 · 여러 선생님 실시간 공유</div>
     </div>
-
+ 
     <div class="panel" style="margin-bottom:16px">
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-<select id="stMin" onchange="startOnMinChange()" style="height:40px;padding:0 12px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface-2);font-size:15px">
-          <option value="15" selected>15분</option>
+        <div class="st-modetog" id="stModeTog">
+          <button type="button" data-mode="exam" class="st-mode-btn">시험</button>
+          <button type="button" data-mode="outing" class="st-mode-btn active">외출</button>
+        </div>
+        <select id="stMin" onchange="startOnMinChange()" style="height:40px;padding:0 12px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface-2);font-size:15px">
+          <option value="__auto__" selected>기본 시간</option>
           <option value="10">10분</option>
+          <option value="15">15분</option>
           <option value="20">20분</option>
           <option value="30">30분</option>
           <option value="__custom__">직접 입력</option>
@@ -4159,21 +4085,35 @@ async function renderStart(){
             style="width:100%;height:40px;padding:0 14px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface-2);font-size:15px">
           <div id="stAc" class="wd-results" style="display:none;position:absolute;top:44px;left:0;right:0;z-index:50;max-height:300px;overflow-y:auto"></div>
         </div>
-        <button class="btn primary" id="stAddBtn">외출 등록</button>
+        <button class="btn primary" id="stAddBtn">등록</button>
         <button class="btn" id="stMuteBtn" title="소리">🔊</button>
         <button class="btn" id="stPermBtn">알림 허용</button>
       </div>
       <div id="stPermHint" style="margin-top:8px;font-size:12px;color:var(--warn);display:none">
         다른 창을 보고 있어도 알림을 받으려면 위 <b>알림 허용</b>을 눌러주세요. (각자 컴퓨터에서 한 번씩)
       </div>
+      <div style="margin-top:8px;font-size:12px;color:var(--ink-3)">
+        키보드: 이름 입력 → <b>↑↓</b>로 학생 선택 → <b>Enter</b> 등록 · <b>←→</b>로 시험/외출 전환
+      </div>
     </div>
-
-    <div id="stGrid" class="card-grid g3"></div>
-    <div id="stEmpty" class="empty" style="display:none">
-      <div class="ei">○</div><div class="et">현재 외출 중인 학생이 없습니다</div>
-      <div class="es">이름이나 회원코드를 입력하면 카운트다운이 시작됩니다.</div>
+ 
+    <div class="st-columns">
+      <div class="st-col">
+        <div class="st-col-head st-col-exam">시험 <span id="stExamCount" class="st-col-cnt">0</span></div>
+        <div class="st-sub"><div class="st-sub-label">진행 중</div><div id="stExamNormal" class="card-grid g2 st-zone"></div></div>
+        <div class="st-sub st-sub-over"><div class="st-sub-label over">초과</div><div id="stExamOver" class="card-grid g2 st-zone"></div></div>
+      </div>
+      <div class="st-col">
+        <div class="st-col-head st-col-outing">외출 <span id="stOutCount" class="st-col-cnt">0</span></div>
+        <div class="st-sub"><div class="st-sub-label">진행 중</div><div id="stOutNormal" class="card-grid g2 st-zone"></div></div>
+        <div class="st-sub st-sub-over"><div class="st-sub-label over">초과</div><div id="stOutOver" class="card-grid g2 st-zone"></div></div>
+      </div>
     </div>
-
+    <div id="stEmpty" class="empty" style="display:none;margin-top:8px">
+      <div class="et">현재 진행 중인 학생이 없습니다</div>
+      <div class="es">시험/외출을 고르고 이름을 입력하면 카운트다운이 시작됩니다.</div>
+    </div>
+ 
     <div class="panel" style="margin-top:20px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
         <h3 style="font-size:14.5px;font-weight:700">기록 <span id="stLogCount" style="color:var(--ink-3);font-weight:500">0명</span></h3>
@@ -4184,46 +4124,66 @@ async function renderStart(){
       </div>
       <div class="table-wrap"><div class="table-scroll">
         <table class="grid">
-          <thead><tr><th>이름</th><th>반</th><th>담임</th><th>나간 시각</th><th>복귀 시각</th><th>소요</th><th>결과</th><th></th></tr></thead>
+          <thead><tr><th>구분</th><th>이름</th><th>반</th><th>담임</th><th>시작</th><th>복귀</th><th>소요</th><th>결과</th><th></th></tr></thead>
           <tbody id="stLogBody"></tbody>
         </table>
       </div></div>
     </div>`;
-
+ 
+  startInjectStyles();
   startBindUI();
   await startLoadSessions(startState.viewDate);
   startSubscribe();
   startStartTicker();
   startRefreshPermHint();
+  el('stInput').focus();
 }
-
-/* ============================================================================
-   데이터 로드 (start_sessions)
-   ============================================================================ */
+ 
+/* ---- 기본 시간(모드별) ---- */
+function startLimitSec(){
+  const sel = el('stMin');
+  if(!sel) return startMode==='exam' ? 600 : 900;
+  if(sel.value==='__auto__') return startMode==='exam' ? 600 : 900;   // 시험10분/외출15분
+  if(sel.value==='__custom__'){
+    const m = parseInt(el('stMinCustom').value,10);
+    return (m>0?m:(startMode==='exam'?10:15))*60;
+  }
+  return parseInt(sel.value,10)*60;
+}
+function startOnMinChange(){
+  const sel=el('stMin'), cust=el('stMinCustom');
+  cust.style.display = (sel.value==='__custom__')?'inline-block':'none';
+  if(sel.value==='__custom__') cust.focus();
+}
+ 
+/* ---- 데이터 로드 ---- */
 async function startLoadSessions(dateStr){
   if(!sb){ try{ initSupabase(); }catch(e){ console.error(e); return; } }
   const { data, error } = await sb.from('start_sessions').select('*')
     .eq('branch_id', session.branchId).eq('date', dateStr)
     .order('left_at', { ascending:false });
-  if(error){ console.error(error); toast('외출 기록 로드 실패 — start_sessions 테이블을 확인하세요','err'); return; }
-  const rows = (data||[]).map(startFromRow);
+  if(error){ console.error(error); toast('기록 로드 실패','err'); return; }
+  const rows=(data||[]).map(startFromRow);
   startState.active = rows.filter(r=>r.status==='out');
   startState.logRows = rows.filter(r=>r.status==='returned');
-  startRenderCards(); startRenderLog();
+  startRenderCards(); startRenderLog(); startSyncOverlay();
 }
-
-/* ============================================================================
-   외출 등록 / 복귀 / 취소
-   ============================================================================ */
+function startFromRow(r){
+  return { id:r.id, studentId:r.student_id, name:r.name, cls:r.cls, teacher:r.teacher,
+    leftAt:r.left_at, returnedAt:r.returned_at, limitSec:r.limit_sec, status:r.status,
+    date:r.date, kind:r.kind||'outing', alarmCleared:!!r.alarm_cleared, alarmed:false };
+}
+ 
+/* ---- 등록 ---- */
 async function startAdd(stu){
   const info = startStudentInfo(stu);
-  if(startState.active.some(a=>a.studentId===stu.id)){ toast(`${info.name} 학생은 이미 외출 중입니다`,'err'); return; }
+  if(startState.active.some(a=>a.studentId===stu.id)){ toast(`${info.name} 학생은 이미 진행 중입니다`,'err'); return; }
   const limitSec = startLimitSec();
   const row = {
     branch_id: session.branchId, date: startTodayStr(),
     student_id: stu.id, name: info.name, cls: info.cls, teacher: info.teacher,
     left_at: new Date().toISOString(), returned_at: null, limit_sec: limitSec,
-    status: 'out', by_user: session.username,
+    status:'out', kind: startMode, alarm_cleared:false, by_user: session.username,
   };
   const { data, error } = await sb.from('start_sessions').insert(row).select().single();
   if(error){ console.error(error); toast('등록 실패 — 다시 시도하세요','err'); return; }
@@ -4231,27 +4191,39 @@ async function startAdd(stu){
   el('stInput').value=''; el('stAc').style.display='none'; el('stInput').focus();
   startUnlockAudio();
 }
+ 
 async function startReturn(id){
-  const a = startState.active.find(x=>x.id===id);
-  if(!a) return;
+  const a = startState.active.find(x=>x.id===id); if(!a) return;
   const ret = new Date().toISOString();
   const { error } = await sb.from('start_sessions').update({ status:'returned', returned_at:ret }).eq('id', id);
   if(error){ console.error(error); toast('복귀 처리 실패','err'); return; }
   a.returnedAt=ret; a.status='returned';
   startState.active = startState.active.filter(x=>x.id!==id);
   startState.logRows.unshift(a);
-  startRenderCards(); startRenderLog();
+  startRenderCards(); startRenderLog(); startSyncOverlay();
 }
 async function startCancel(id){
   const { error } = await sb.from('start_sessions').delete().eq('id', id);
   if(error){ console.error(error); toast('취소 실패','err'); return; }
   startState.active = startState.active.filter(x=>x.id!==id);
-  startRenderCards();
+  startRenderCards(); startSyncOverlay();
 }
-
-/* ============================================================================
-   실시간 동기화
-   ============================================================================ */
+ 
+/* ---- 경고 공유: 한 명이 확인 누르면 모두 꺼짐 ---- */
+async function startClearAlarm(){
+  // 지금 초과된 학생들의 alarm_cleared를 모두 true로
+  const now=new Date();
+  const overIds = startState.active.filter(a=>{
+    const el2=Math.floor((now-new Date(a.leftAt))/1000); return el2>=a.limitSec;
+  }).map(a=>a.id);
+  startCloseOverlay();
+  if(!overIds.length) return;
+  const { error } = await sb.from('start_sessions').update({ alarm_cleared:true }).in('id', overIds);
+  if(error){ console.error(error); return; }
+  overIds.forEach(id=>{ const a=startState.active.find(x=>x.id===id); if(a) a.alarmCleared=true; });
+}
+ 
+/* ---- 실시간 ---- */
 function startSubscribe(){
   if(startState.channel) sb.removeChannel(startState.channel);
   startState.channel = sb.channel('start_'+session.branchId)
@@ -4262,135 +4234,203 @@ function startSubscribe(){
 }
 function startHandleRealtime(payload){
   if(payload.eventType==='DELETE'){
-    const oldId = payload.old && payload.old.id;
-    if(!oldId) return;
-    const before = startState.active.length + startState.logRows.length;
+    const oldId = payload.old && payload.old.id; if(!oldId) return;
     startState.active = startState.active.filter(a=>a.id!==oldId);
     startState.logRows = startState.logRows.filter(l=>l.id!==oldId);
-    startRenderCards(); startRenderLog();
+    startRenderCards(); startRenderLog(); startSyncOverlay();
     return;
   }
   const row = payload.new;
   if(!row || row.date!==startState.viewDate) return;
   if(payload.eventType==='INSERT'){
-    const r = startFromRow(payload.new);
-    if(r.status==='out' && !startState.active.some(a=>a.id===r.id)){ startState.active.unshift(r); startRenderCards(); }
+    const r=startFromRow(payload.new);
+    if(r.status==='out' && !startState.active.some(a=>a.id===r.id)){ startState.active.unshift(r); startRenderCards(); startSyncOverlay(); }
   } else if(payload.eventType==='UPDATE'){
-    const r = startFromRow(payload.new);
+    const r=startFromRow(payload.new);
+    // 복귀
     if(r.status==='returned'){
       startState.active = startState.active.filter(a=>a.id!==r.id);
       if(!startState.logRows.some(l=>l.id===r.id)) startState.logRows.unshift(r);
-      startRenderCards(); startRenderLog();
+      startRenderCards(); startRenderLog(); startSyncOverlay(); return;
     }
+    // 경고 확인 공유
+    const cur = startState.active.find(a=>a.id===r.id);
+    if(cur){ cur.alarmCleared = r.alarmCleared; startSyncOverlay(); }
   }
 }
-
-/* ============================================================================
-   카드 렌더 + 매초 tick
-   ============================================================================ */
+ 
+/* ---- 카드 렌더 (좌우 분리 + 초과 분리) ---- */
 function startRenderCards(){
-  const grid = el('stGrid'); if(!grid) return;
+  const zones = {
+    examNormal: el('stExamNormal'), examOver: el('stExamOver'),
+    outNormal:  el('stOutNormal'),  outOver:  el('stOutOver'),
+  };
+  if(!zones.examNormal) return;
+  const now=new Date();
+  const buckets = { examNormal:[], examOver:[], outNormal:[], outOver:[] };
+  startState.active.forEach(a=>{
+    const elapsed=Math.floor((now-new Date(a.leftAt))/1000);
+    const over = elapsed>=a.limitSec;
+    const exam = a.kind==='exam';
+    const key = (exam?'exam':'out') + (over?'Over':'Normal');
+    buckets[key].push(a);
+  });
+  Object.keys(zones).forEach(k=>{
+    zones[k].innerHTML = buckets[k].map(a=>startCardHTML(a)).join('');
+  });
+  el('stExamCount').textContent = buckets.examNormal.length+buckets.examOver.length;
+  el('stOutCount').textContent  = buckets.outNormal.length+buckets.outOver.length;
   el('stEmpty').style.display = startState.active.length ? 'none':'block';
-  grid.innerHTML = startState.active.map(a=>{
-    const clsLine = [a.cls, a.teacher].filter(Boolean).join(' · ');
-    return `<div class="card start-card" data-id="${a.id}">
-      <div class="card-name" style="font-size:26px">${esc(a.name)}</div>
-      <div style="color:var(--brand);font-weight:600;font-size:14px;margin:2px 0 4px">${esc(clsLine||'—')}</div>
-      <div style="color:var(--ink-3);font-size:13px;margin-bottom:10px">나간 시각 · <b>${startHM(a.leftAt)}</b></div>
-      <div class="st-timer" style="font-size:46px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--pos);line-height:1">00:00</div>
-      <div class="st-bar" style="height:6px;background:var(--surface-2);border-radius:4px;margin-top:10px;overflow:hidden"><i style="display:block;height:100%;background:var(--pos);width:100%"></i></div>
-      <div class="st-status" style="font-size:13px;color:var(--ink-3);margin-top:8px"></div>
-      <div style="display:flex;gap:8px;margin-top:14px">
-        <button class="btn primary sm" style="flex:1" onclick="startReturn('${a.id}')">복귀</button>
-        <button class="btn sm" style="flex:1" onclick="startCancel('${a.id}')">취소</button>
-      </div>
-    </div>`;
-  }).join('');
   startTick();
 }
-function startStartTicker(){
-  if(startState.ticker) clearInterval(startState.ticker);
-  startState.ticker = setInterval(startTick, 1000);
+function startCardHTML(a){
+  const clsLine=[a.cls,a.teacher].filter(Boolean).join(' · ');
+  const tag = a.kind==='exam' ? '<span class="st-kind exam">시험</span>' : '<span class="st-kind outing">외출</span>';
+  return `<div class="card start-card" data-id="${a.id}">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
+      ${tag}<div class="card-name" style="font-size:24px">${esc(a.name)}</div>
+    </div>
+    <div style="color:var(--brand);font-weight:600;font-size:13px;margin-bottom:3px">${esc(clsLine||'—')}</div>
+    <div style="color:var(--ink-3);font-size:12px;margin-bottom:8px">시작 · <b>${startHM(a.leftAt)}</b></div>
+    <div class="st-timer" style="font-size:40px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--pos);line-height:1">00:00</div>
+    <div class="st-bar" style="height:6px;background:var(--surface-2);border-radius:4px;margin-top:8px;overflow:hidden"><i style="display:block;height:100%;background:var(--pos);width:100%"></i></div>
+    <div class="st-status" style="font-size:12px;color:var(--ink-3);margin-top:6px"></div>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="btn primary sm" style="flex:1" onclick="startReturn('${a.id}')">복귀</button>
+      <button class="btn sm" style="flex:1" onclick="startCancel('${a.id}')">취소</button>
+    </div>
+  </div>`;
 }
+function startStartTicker(){ if(startState.ticker) clearInterval(startState.ticker); startState.ticker=setInterval(startTick,1000); }
 function startTick(){
-  const grid = el('stGrid'); if(!grid) return;
-  const now = new Date();
+  const now=new Date();
+  let needReflow=false;
   startState.active.forEach(a=>{
-    const card = grid.querySelector(`.start-card[data-id="${a.id}"]`);
+    const card=document.querySelector(`.start-card[data-id="${a.id}"]`);
+    const elapsed=Math.floor((now-new Date(a.leftAt))/1000);
+    const remain=a.limitSec-elapsed;
+    const wasOver = a._over===true;
+    const isOver = remain<=0;
+    if(wasOver!==isOver){ a._over=isOver; needReflow=true; }
     if(!card) return;
-    const elapsed = Math.floor((now - new Date(a.leftAt))/1000);
-    const remain = a.limitSec - elapsed;
-    const timerEl = card.querySelector('.st-timer');
-    const barEl = card.querySelector('.st-bar > i');
-    const statusEl = card.querySelector('.st-status');
+    const timerEl=card.querySelector('.st-timer');
+    const barEl=card.querySelector('.st-bar > i');
+    const statusEl=card.querySelector('.st-status');
     if(remain>0){
-      timerEl.textContent = startDur(remain);
-      timerEl.style.color = remain<=180 ? 'var(--warn)' : 'var(--pos)';
-      statusEl.textContent = '남은 시간';
-      barEl.style.width = Math.max(0,(remain/a.limitSec)*100)+'%';
-      barEl.style.background = remain<=180 ? 'var(--warn)' : 'var(--pos)';
-      card.style.borderColor = ''; card.style.animation='';
+      timerEl.textContent=startDur(remain);
+      timerEl.style.color = remain<=180?'var(--warn)':'var(--pos)';
+      statusEl.textContent='남은 시간';
+      barEl.style.width=Math.max(0,(remain/a.limitSec)*100)+'%';
+      barEl.style.background = remain<=180?'var(--warn)':'var(--pos)';
+      card.classList.remove('st-over-card');
     } else {
-      timerEl.textContent = '+'+startDur(elapsed - a.limitSec);
-      timerEl.style.color = '#fff';
-      statusEl.textContent = '초과 시간 · 복귀 확인 필요';
+      timerEl.textContent='+'+startDur(elapsed-a.limitSec);
+      timerEl.style.color='var(--neg)';
+      statusEl.textContent='초과 · 복귀 확인 필요';
       barEl.style.width='100%'; barEl.style.background='var(--neg)';
-      card.style.borderColor='var(--neg)';
-      card.style.animation='stFlash 0.9s infinite';
-      if(!a.alarmed){ a.alarmed=true; startFireAlarm(a); }
+      card.classList.add('st-over-card');
+      if(!a.alarmed && !a.alarmCleared){ a.alarmed=true; startFireAlarm(a); }
     }
   });
+  if(needReflow) startRenderCards();  // 초과되면 초과 구역으로 이동
 }
-
-/* ============================================================================
-   초과 알림 — 소리 + 시스템 알림 + 토스트 (모든 선생님 화면)
-   ============================================================================ */
+ 
+/* ---- 초과 알림 ---- */
 function startFireAlarm(a){
   startBeep();
   startSystemNotify(a.name, a.limitSec);
-  startShowOverlay();  // 화면 전체 경고
+  startShowOverlay();
 }
-function startSystemNotify(name, limitSec){
-  if(!('Notification' in window) || Notification.permission!=='granted') return;
-  try{
-    const n = new Notification('STaRT 시간 초과', {
-      body: `${name} 학생이 ${Math.round(limitSec/60)}분을 넘겼습니다. 복귀 확인이 필요합니다.`,
-      tag: 'start-'+name+'-'+Date.now(), requireInteraction:true,
-    });
-    n.onclick=()=>{ window.focus(); n.close(); };
-  }catch(e){ console.warn(e); }
+ 
+/* ---- 오버레이 (실시간 공유) ---- */
+function startShowOverlay(){
+  let ov=document.getElementById('stOverlay');
+  if(!ov){
+    ov=document.createElement('div'); ov.id='stOverlay';
+    ov.innerHTML=`<div class="st-ov-inner">
+      <div class="st-ov-tag"><i class="ti ti-clock-exclamation" style="font-size:18px"></i>시간 초과</div>
+      <div class="st-ov-names" id="stOvNames"></div>
+      <div class="st-ov-sub">복귀 확인이 필요합니다</div>
+      <button class="st-ov-btn" onclick="startClearAlarm()">확인했습니다</button>
+    </div>`;
+    document.body.appendChild(ov);
+  }
+  startUpdateOverlay();
+  ov.style.display='flex';
 }
+function startUpdateOverlay(){
+  const box=document.getElementById('stOvNames'); if(!box) return;
+  const now=new Date();
+  const over=startState.active.filter(a=>{
+    const e=Math.floor((now-new Date(a.leftAt))/1000);
+    return e>=a.limitSec && !a.alarmCleared;
+  });
+  if(!over.length){ startCloseOverlay(); return; }
+  box.innerHTML=over.map(a=>{
+    const e=Math.floor((now-new Date(a.leftAt))/1000);
+    const k=a.kind==='exam'?'시험':'외출';
+    return `<div class="st-ov-row"><span class="st-ov-name">${esc(a.name)}</span><span class="st-ov-over">${k} +${startDur(e-a.limitSec)}</span></div>`;
+  }).join('');
+}
+function startCloseOverlay(){ const ov=document.getElementById('stOverlay'); if(ov) ov.style.display='none'; }
+/* 상태에 맞춰 오버레이를 열지/닫을지 동기화 (실시간 반영용) */
+function startSyncOverlay(){
+  const now=new Date();
+  const anyOver = startState.active.some(a=>{
+    const e=Math.floor((now-new Date(a.leftAt))/1000);
+    return e>=a.limitSec && !a.alarmCleared;
+  });
+  if(anyOver) startShowOverlay(); else startCloseOverlay();
+}
+ 
+/* ---- 소리 (기존 유지) ---- */
 let startAudioCtx=null;
 function startUnlockAudio(){ if(startAudioCtx && startAudioCtx.state==='suspended') startAudioCtx.resume(); }
 function startBeep(){
   if(startState.muted) return;
   try{
-    startAudioCtx = startAudioCtx || new (window.AudioContext||window.webkitAudioContext)();
+    startAudioCtx=startAudioCtx||new (window.AudioContext||window.webkitAudioContext)();
     let t=startAudioCtx.currentTime;
     for(let i=0;i<3;i++){
-      const o=startAudioCtx.createOscillator(), g=startAudioCtx.createGain();
-      o.connect(g); g.connect(startAudioCtx.destination);
-      o.type='square'; o.frequency.value = i%2?660:880;
-      g.gain.setValueAtTime(0.001,t);
-      g.gain.exponentialRampToValueAtTime(0.25,t+0.02);
+      const o=startAudioCtx.createOscillator(),g=startAudioCtx.createGain();
+      o.connect(g);g.connect(startAudioCtx.destination);
+      o.type='square';o.frequency.value=i%2?660:880;
+      g.gain.setValueAtTime(0.001,t);g.gain.exponentialRampToValueAtTime(0.25,t+0.02);
       g.gain.exponentialRampToValueAtTime(0.001,t+0.3);
-      o.start(t); o.stop(t+0.32); t+=0.34;
+      o.start(t);o.stop(t+0.32);t+=0.34;
     }
   }catch(e){}
 }
-
-/* ============================================================================
-   기록 표
-   ============================================================================ */
-
+ 
+/* ---- 기록 표 ---- */
+function startRenderLog(){
+  const body=el('stLogBody'); if(!body) return;
+  el('stLogCount').textContent=startState.logRows.length+'명';
+  body.innerHTML=startState.logRows.map(r=>{
+    const elapsed=r.returnedAt?Math.round((new Date(r.returnedAt)-new Date(r.leftAt))/1000):null;
+    const over=elapsed!=null && elapsed>r.limitSec;
+    const k=r.kind==='exam'?'시험':'외출';
+    return `<tr>
+      <td>${k}</td>
+      <td class="st-name">${esc(r.name)}</td>
+      <td>${esc(r.cls||'—')}</td>
+      <td>${esc(r.teacher||'—')}</td>
+      <td class="num">${startHM(r.leftAt)}</td>
+      <td class="num">${r.returnedAt?startHM(r.returnedAt):'—'}</td>
+      <td class="num">${elapsed!=null?startDur(elapsed):'—'}</td>
+      <td style="font-weight:700;color:${over?'var(--neg)':'var(--pos)'}">${over?'초과':'정상'}</td>
+      <td class="cc"><button class="btn sm" style="color:var(--neg)" onclick="startDeleteLog('${r.id}')">삭제</button></td>
+    </tr>`;
+  }).join('');
+}
 function startDownloadCSV(){
   if(!startState.logRows.length){ toast('기록이 없습니다','err'); return; }
-  const rows=[['이름','반','담임','나간시각','복귀시각','소요(분:초)','제한(분)','결과']];
+  const rows=[['구분','이름','반','담임','시작','복귀','소요(분:초)','제한(분)','결과']];
   startState.logRows.slice().reverse().forEach(r=>{
-    const elapsed = r.returnedAt ? Math.round((new Date(r.returnedAt)-new Date(r.leftAt))/1000) : null;
-    const over = elapsed!=null && elapsed>r.limitSec;
-    rows.push([r.name, r.cls||'', r.teacher||'', startHM(r.leftAt), r.returnedAt?startHM(r.returnedAt):'',
-      elapsed!=null?startDur(elapsed):'', Math.round(r.limitSec/60), over?'초과':'정상']);
+    const elapsed=r.returnedAt?Math.round((new Date(r.returnedAt)-new Date(r.leftAt))/1000):null;
+    const over=elapsed!=null && elapsed>r.limitSec;
+    rows.push([r.kind==='exam'?'시험':'외출', r.name, r.cls||'', r.teacher||'', startHM(r.leftAt),
+      r.returnedAt?startHM(r.returnedAt):'', elapsed!=null?startDur(elapsed):'', Math.round(r.limitSec/60), over?'초과':'정상']);
   });
   const csv='\uFEFF'+rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
   const blob=new Blob([csv],{type:'text/csv'});
@@ -4399,54 +4439,59 @@ function startDownloadCSV(){
   a.download=`STaRT_${getBranch(session.branchId)?.name||session.branchId}_${startState.viewDate}.csv`;
   a.click();
 }
-
-/* ============================================================================
-   입력/자동완성 + 이벤트 바인딩
-   ============================================================================ */
+ 
+/* ---- 입력/자동완성 + 키보드 ---- */
 let startAcList=[], startAcSel=-1;
 function startBindUI(){
-  const input = el('stInput');
+  const input=el('stInput');
   input.addEventListener('input', startOnInput);
   input.addEventListener('keydown', startOnKeydown);
-  el('stAddBtn').onclick = ()=>{
-    const m = startFindStudents(input.value);
+  el('stAddBtn').onclick=()=>{
+    const m=startFindStudents(input.value);
     if(m.length===1) startAdd(m[0]);
-    else if(m.length>1){ startOnInput(); toast('여러 명이 검색됩니다. 목록에서 선택하세요'); }
+    else if(m.length>1){ startOnInput(); toast('여러 명이 검색됩니다. ↑↓로 선택하세요'); }
     else toast('일치하는 학생이 없습니다','err');
   };
-  el('stMuteBtn').onclick = ()=>{ startState.muted=!startState.muted; el('stMuteBtn').textContent=startState.muted?'🔇':'🔊'; };
-  el('stPermBtn').onclick = startAskPerm;
-  el('stDate').onchange = ()=>{ startState.viewDate=el('stDate').value; startLoadSessions(startState.viewDate); };
-  el('stCsvBtn').onclick = startDownloadCSV;
+  el('stMuteBtn').onclick=()=>{ startState.muted=!startState.muted; el('stMuteBtn').textContent=startState.muted?'🔇':'🔊'; };
+  el('stPermBtn').onclick=startAskPerm;
+  el('stDate').onchange=()=>{ startState.viewDate=el('stDate').value; startLoadSessions(startState.viewDate); };
+  el('stCsvBtn').onclick=startDownloadCSV;
+  // 모드 토글 (마우스)
+  el('stModeTog').querySelectorAll('.st-mode-btn').forEach(b=>{
+    b.onclick=()=> startSetMode(b.dataset.mode);
+  });
   document.addEventListener('click', startDocClick);
 }
+function startSetMode(mode){
+  startMode = mode;
+  el('stModeTog').querySelectorAll('.st-mode-btn').forEach(b=> b.classList.toggle('active', b.dataset.mode===mode));
+}
 function startDocClick(e){
-  const ac=el('stAc'), input=el('stInput');
-  if(!ac || !input) return;
+  const ac=el('stAc'), input=el('stInput'); if(!ac||!input) return;
   if(e.target!==input && !ac.contains(e.target)) ac.style.display='none';
 }
 function startOnInput(){
-  const q = el('stInput').value;
-  const box = el('stAc');
+  const q=el('stInput').value, box=el('stAc');
   if(!q.trim()){ box.style.display='none'; startAcList=[]; return; }
-  startAcList = startFindStudents(q); startAcSel=-1;
+  startAcList=startFindStudents(q); startAcSel=-1;
   if(!startAcList.length){ box.innerHTML=`<div class="wd-empty">일치하는 학생이 없습니다</div>`; box.style.display='block'; return; }
-  box.innerHTML = startAcList.map((s,i)=>{
-    const info = startStudentInfo(s);
-    const meta = [info.cls, info.teacher, info.code].filter(Boolean).join(' · ');
-    return `<div class="wd-item" data-i="${i}">
-      <div class="wd-main"><span class="wd-name">${esc(s.name)}</span></div>
-      <div class="wd-meta">${esc(meta)}</div>
-    </div>`;
+  box.innerHTML=startAcList.map((s,i)=>{
+    const info=startStudentInfo(s);
+    const meta=[info.cls,info.teacher,info.code].filter(Boolean).join(' · ');
+    return `<div class="wd-item" data-i="${i}"><div class="wd-main"><span class="wd-name">${esc(s.name)}</span></div><div class="wd-meta">${esc(meta)}</div></div>`;
   }).join('');
   box.querySelectorAll('.wd-item').forEach(it=> it.onclick=()=> startAdd(startAcList[parseInt(it.dataset.i,10)]));
   box.style.display='block';
 }
 function startOnKeydown(e){
-  const box = el('stAc');
+  const box=el('stAc');
+  // ←→ 로 시험/외출 전환 (자동완성 안 떠 있을 때, 혹은 입력 비었을 때)
+  if((e.key==='ArrowLeft'||e.key==='ArrowRight') && box.style.display!=='block'){
+    e.preventDefault(); startSetMode(startMode==='exam'?'outing':'exam'); return;
+  }
   if(box.style.display!=='block' || !startAcList.length){
     if(e.key==='Enter'){
-      const m = startFindStudents(el('stInput').value);
+      const m=startFindStudents(el('stInput').value);
       if(m.length===1) startAdd(m[0]);
       else if(m.length>1) startOnInput();
       else toast('일치하는 학생이 없습니다','err');
@@ -4455,19 +4500,21 @@ function startOnKeydown(e){
   }
   if(e.key==='ArrowDown'){ e.preventDefault(); startAcSel=Math.min(startAcSel+1,startAcList.length-1); startUpdateAcSel(); }
   else if(e.key==='ArrowUp'){ e.preventDefault(); startAcSel=Math.max(startAcSel-1,0); startUpdateAcSel(); }
+  else if(e.key==='ArrowLeft'||e.key==='ArrowRight'){ e.preventDefault(); startSetMode(startMode==='exam'?'outing':'exam'); }
   else if(e.key==='Enter'){ e.preventDefault(); if(startAcSel>=0) startAdd(startAcList[startAcSel]); else if(startAcList.length===1) startAdd(startAcList[0]); }
   else if(e.key==='Escape'){ box.style.display='none'; }
 }
 function startUpdateAcSel(){
-  el('stAc').querySelectorAll('.wd-item').forEach((it,i)=> it.classList.toggle('sel', i===startAcSel));
+  el('stAc').querySelectorAll('.wd-item').forEach((it,i)=>{
+    it.classList.toggle('sel', i===startAcSel);
+    if(i===startAcSel) it.scrollIntoView({block:'nearest'});
+  });
 }
-
+ 
 /* ---- 알림 권한 ---- */
 function startRefreshPermHint(){
-  const hint = el('stPermHint');
-  if(!hint) return;
-  if(('Notification' in window) && Notification.permission==='default') hint.style.display='block';
-  else hint.style.display='none';
+  const hint=el('stPermHint'); if(!hint) return;
+  hint.style.display = (('Notification' in window)&&Notification.permission==='default')?'block':'none';
 }
 function startAskPerm(){
   if(!('Notification' in window)){ toast('이 브라우저는 알림을 지원하지 않습니다','err'); return; }
@@ -4477,79 +4524,42 @@ function startAskPerm(){
     else toast('알림이 차단됨 — 주소창 자물쇠 아이콘에서 허용하세요','err');
   });
 }
-
-/* 카드 깜빡임 keyframe 주입 (한 번만) */
-(function(){
-  if(document.getElementById('stFlashStyle')) return;
-  const st=document.createElement('style'); st.id='stFlashStyle';
-  st.textContent='@keyframes stFlash{0%,100%{background:var(--surface)}50%{background:#3a1414;box-shadow:0 0 24px rgba(255,77,77,.5)}}';
-  document.head.appendChild(st);
-})();
-(function(){
-  if(document.getElementById('stOverlayStyle')) return;
-  const st=document.createElement('style'); st.id='stOverlayStyle';
+ 
+/* ---- 스타일 주입 ---- */
+function startInjectStyles(){
+  if(document.getElementById('stV3Style')) return;
+  const st=document.createElement('style'); st.id='stV3Style';
   st.textContent=`
-    #stOverlay{position:fixed;inset:0;z-index:9999;background:rgba(180,0,0,.94);
-      display:none;flex-direction:column;align-items:center;justify-content:center;
-      animation:stOvFlash .8s infinite;text-align:center;padding:24px}
-    @keyframes stOvFlash{0%,100%{background:rgba(180,0,0,.94)}50%{background:rgba(120,0,0,.97)}}
-    .st-ov-inner{max-width:90vw}
-    .st-ov-icon{font-size:80px;line-height:1;margin-bottom:8px}
-    .st-ov-title{color:#fff;font-size:44px;font-weight:900;letter-spacing:4px;margin-bottom:24px}
-    .st-ov-names{display:flex;flex-direction:column;gap:12px;margin-bottom:24px}
-    .st-ov-name{color:#fff;font-size:72px;font-weight:900;line-height:1.1;
-      text-shadow:0 2px 12px rgba(0,0,0,.4)}
-    .st-ov-sub{color:rgba(255,255,255,.9);font-size:22px;font-weight:600;margin-bottom:32px}
-    .st-ov-btn{background:#fff;color:#b40000;border:none;border-radius:14px;
-      font-size:24px;font-weight:800;padding:16px 60px;cursor:pointer}
-    .st-ov-btn:hover{transform:scale(1.05)}`;
+    .st-columns{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    .st-col{background:var(--surface-1);border-radius:12px;padding:12px}
+    .st-col-head{font-size:15px;font-weight:800;padding:6px 8px 12px;display:flex;align-items:center;gap:8px}
+    .st-col-exam{color:#185FA5}.st-col-outing{color:#0F6E56}
+    .st-col-cnt{background:var(--surface-2);border-radius:999px;font-size:12px;font-weight:700;padding:2px 10px;color:var(--ink-2)}
+    .st-sub{margin-bottom:10px}
+    .st-sub-label{font-size:11px;font-weight:700;color:var(--ink-3);letter-spacing:1px;margin:2px 4px 8px}
+    .st-sub-label.over{color:var(--neg)}
+    .st-zone{min-height:8px}
+    .card-grid.g2{grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}
+    .st-kind{font-size:11px;font-weight:800;padding:2px 8px;border-radius:6px}
+    .st-kind.exam{background:#E6F1FB;color:#185FA5}
+    .st-kind.outing{background:#E1F5EE;color:#0F6E56}
+    .st-over-card{border-color:var(--neg)!important;animation:stFlash .9s infinite}
+    @keyframes stFlash{0%,100%{background:var(--surface)}50%{background:#3a1414}}
+    .st-modetog{display:inline-flex;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden;height:40px}
+    .st-mode-btn{border:none;background:transparent;padding:0 18px;font-size:15px;font-weight:700;color:var(--ink-3);cursor:pointer}
+    .st-mode-btn.active{background:var(--brand);color:#fff}
+    #stOverlay{position:fixed;inset:0;z-index:9999;background:#1a1416;display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;animation:stOvIn .25s ease-out}
+    @keyframes stOvIn{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:scale(1)}}
+    #stOverlay::before{content:'';position:absolute;top:0;left:0;right:0;height:4px;background:#c0392b}
+    .st-ov-tag{display:inline-flex;align-items:center;gap:8px;background:rgba(192,57,43,.15);border:1px solid rgba(192,57,43,.5);border-radius:999px;padding:7px 18px;margin-bottom:28px;font-size:14px;font-weight:500;color:#e8a0a0;letter-spacing:2px}
+    .st-ov-names{display:flex;flex-direction:column;gap:14px;margin-bottom:28px}
+    .st-ov-row{display:flex;align-items:center;justify-content:center;gap:16px;flex-wrap:wrap}
+    .st-ov-name{font-size:52px;font-weight:500;color:#fff;line-height:1;letter-spacing:-1px}
+    .st-ov-over{font-size:15px;font-weight:500;color:#1a1416;background:#e74c3c;border-radius:8px;padding:5px 12px}
+    .st-ov-sub{font-size:16px;color:rgba(255,255,255,.6);margin-bottom:32px}
+    .st-ov-btn{background:#fff;color:#1a1416;border:none;border-radius:12px;font-size:17px;font-weight:500;padding:14px 48px;cursor:pointer}
+    .st-ov-btn:hover{opacity:.9}
+    @media(max-width:900px){.st-columns{grid-template-columns:1fr}}`;
   document.head.appendChild(st);
-})();
-function startOnMinChange(){
-  const sel = el('stMin');
-  const cust = el('stMinCustom');
-  cust.style.display = (sel.value==='__custom__') ? 'inline-block' : 'none';
-  if(sel.value==='__custom__') cust.focus();
 }
-function startLimitSec(){
-  const sel = el('stMin');
-  if(sel.value==='__custom__'){
-    const m = parseInt(el('stMinCustom').value,10);
-    return (m>0 ? m : 15) * 60;
-  }
-  return parseInt(sel.value,10) * 60;
-}
-/* 화면 전체 경고 오버레이 — 초과된 학생 이름들을 크게 표시 */
-function startShowOverlay(){
-  let ov = document.getElementById('stOverlay');
-  if(!ov){
-    ov = document.createElement('div');
-    ov.id = 'stOverlay';
-    ov.innerHTML = `
-      <div class="st-ov-inner">
-        <div class="st-ov-icon">⏰</div>
-        <div class="st-ov-title">시간 초과</div>
-        <div class="st-ov-names" id="stOvNames"></div>
-        <div class="st-ov-sub">STaRT 복귀 확인이 필요합니다</div>
-        <button class="st-ov-btn" onclick="startCloseOverlay()">확인</button>
-      </div>`;
-    document.body.appendChild(ov);
-  }
-  startUpdateOverlay();
-  ov.style.display = 'flex';
-}
-function startUpdateOverlay(){
-  const box = document.getElementById('stOvNames');
-  if(!box) return;
-  const now = new Date();
-  const over = startState.active.filter(a=>{
-    const elapsed = Math.floor((now - new Date(a.leftAt))/1000);
-    return elapsed >= a.limitSec;
-  });
-  if(!over.length){ startCloseOverlay(); return; }
-  box.innerHTML = over.map(a=>`<div class="st-ov-name">${esc(a.name)}</div>`).join('');
-}
-function startCloseOverlay(){
-  const ov = document.getElementById('stOverlay');
-  if(ov) ov.style.display = 'none';
-}
+ 
