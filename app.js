@@ -4399,4 +4399,15 @@ function startPad(n){ return String(n).padStart(2,'0'); }
 function startTodayStr(){ const d=new Date(); return `${d.getFullYear()}-${startPad(d.getMonth()+1)}-${startPad(d.getDate())}`; }
 function startHM(iso){ const d=new Date(iso); return `${startPad(d.getHours())}:${startPad(d.getMinutes())}`; }
 function startDur(sec){ const neg=sec<0; sec=Math.abs(sec); return (neg?'-':'')+startPad(Math.floor(sec/60))+':'+startPad(sec%60); }
- 
+ function startAskPerm(){
+  if(!('Notification' in window)){ toast('이 브라우저는 알림을 지원하지 않습니다','err'); return; }
+  Notification.requestPermission().then(p=>{
+    startRefreshPermHint();
+    if(p==='granted') toast('알림이 허용되었습니다','ok');
+    else toast('알림이 차단됨 — 주소창 자물쇠 아이콘에서 허용하세요','err');
+  });
+}
+function startRefreshPermHint(){
+  const hint=el('stPermHint'); if(!hint) return;
+  hint.style.display = (('Notification' in window)&&Notification.permission==='default')?'block':'none';
+}
