@@ -4410,4 +4410,4 @@ function startDur(sec){ const neg=sec<0; sec=Math.abs(sec); return (neg?'-':'')+
 function startRefreshPermHint(){
   const hint=el('stPermHint'); if(!hint) return;
   hint.style.display = (('Notification' in window)&&Notification.permission==='default')?'block':'none';
-}
+} 
