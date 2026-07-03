@@ -4411,4 +4411,204 @@ function startRefreshPermHint(){
   const hint=el('stPermHint'); if(!hint) return;
   hint.style.display = (('Notification' in window)&&Notification.permission==='default')?'block':'none';
 } 
-// update
+/* ---- 데이터 로드 ---- */
+async function startLoadSessions(dateStr){
+  if(!sb){ try{ initSupabase(); }catch(e){ console.error(e); return; } }
+  const { data, error } = await sb.from('start_sessions').select('*')
+    .eq('branch_id', session.branchId).eq('date', dateStr)
+    .order('left_at', { ascending:false });
+  if(error){ console.error(error); toast('기록 로드 실패','err'); return; }
+  const rows=(data||[]).map(startFromRow);
+  startState.active = rows.filter(r=>r.status==='out');
+  startState.logRows = rows.filter(r=>r.status==='returned');
+  startRenderCards(); startSyncOverlay();
+}
+function startFromRow(r){
+  return { id:r.id, studentId:r.student_id, name:r.name, cls:r.cls, teacher:r.teacher,
+    leftAt:r.left_at, returnedAt:r.returned_at, limitSec:r.limit_sec, status:r.status,
+    date:r.date, kind:r.kind||'outing', alarmCleared:!!r.alarm_cleared, alarmed:false, _over:false };
+}
+ 
+/* ---- 기본 시간(모드별) ---- */
+function startLimitSec(){
+  const sel=el('stMin');
+  if(!sel) return startMode==='exam'?600:900;
+  if(sel.value==='__auto__') return startMode==='exam'?600:900;
+  if(sel.value==='__custom__'){ const m=parseInt(el('stMinCustom').value,10); return (m>0?m:(startMode==='exam'?10:15))*60; }
+  return parseInt(sel.value,10)*60;
+}
+function startOnMinChange(){
+  const sel=el('stMin'), cust=el('stMinCustom');
+  cust.style.display=(sel.value==='__custom__')?'inline-block':'none';
+  if(sel.value==='__custom__') cust.focus();
+}
+ 
+/* ---- 등록 ---- */
+async function startAdd(stu){
+  const info=startStudentInfo(stu);
+  if(startState.active.some(a=>a.studentId===stu.id)){ toast(`${info.name} 학생은 이미 진행 중입니다`,'err'); return; }
+  const limitSec=startLimitSec();
+  const row={ branch_id:session.branchId, date:startTodayStr(), student_id:stu.id,
+    name:info.name, cls:info.cls, teacher:info.teacher, left_at:new Date().toISOString(),
+    returned_at:null, limit_sec:limitSec, status:'out', kind:startMode, alarm_cleared:false, by_user:session.username };
+  const { data, error } = await sb.from('start_sessions').insert(row).select().single();
+  if(error){ console.error(error); toast('등록 실패 — 다시 시도하세요','err'); return; }
+  if(!startState.active.some(a=>a.id===data.id)){ startState.active.unshift(startFromRow(data)); startRenderCards(); }
+  el('stInput').value=''; el('stAc').style.display='none'; el('stInput').focus();
+  startUnlockAudio();
+}
+async function startReturn(id){
+  const a=startState.active.find(x=>x.id===id); if(!a) return;
+  const ret=new Date().toISOString();
+  const { error } = await sb.from('start_sessions').update({ status:'returned', returned_at:ret }).eq('id', id);
+  if(error){ console.error(error); toast('처리 실패','err'); return; }
+  a.returnedAt=ret; a.status='returned';
+  startState.active=startState.active.filter(x=>x.id!==id);
+  startState.logRows.unshift(a);
+  startRenderCards(); startSyncOverlay();
+}
+async function startCancel(id){
+  const { error } = await sb.from('start_sessions').delete().eq('id', id);
+  if(error){ console.error(error); toast('취소 실패','err'); return; }
+  startState.active=startState.active.filter(x=>x.id!==id);
+  startRenderCards(); startSyncOverlay();
+}
+async function startDeleteLog(id){
+  const r=startState.logRows.find(x=>x.id===id); if(!r) return;
+  if(!confirm(`${r.name} 학생의 이 기록을 삭제할까요?`)) return;
+  const { error } = await sb.from('start_sessions').delete().eq('id', id);
+  if(error){ console.error(error); toast('삭제 실패','err'); return; }
+  startState.logRows=startState.logRows.filter(x=>x.id!==id);
+  toast('기록 삭제됨','ok');
+  if(document.getElementById('modalOverlay') && document.getElementById('modalOverlay').style.display!=='none') startOpenLogModal();
+}
+ 
+/* ---- 경고 공유: 한 명이 확인하면 모두 꺼짐 ---- */
+async function startClearAlarm(){
+  const now=new Date();
+  const overIds=startState.active.filter(a=>{ const e=Math.floor((now-new Date(a.leftAt))/1000); return e>=a.limitSec; }).map(a=>a.id);
+  startCloseOverlay();
+  if(!overIds.length) return;
+  const { error } = await sb.from('start_sessions').update({ alarm_cleared:true }).in('id', overIds);
+  if(error){ console.error(error); return; }
+  overIds.forEach(id=>{ const a=startState.active.find(x=>x.id===id); if(a) a.alarmCleared=true; });
+}
+ 
+/* ---- 실시간 ---- */
+function startSubscribe(){
+  if(startState.channel) sb.removeChannel(startState.channel);
+  startState.channel=sb.channel('start_'+session.branchId)
+    .on('postgres_changes', { event:'*', schema:'public', table:'start_sessions', filter:`branch_id=eq.${session.branchId}` },
+      payload=>startHandleRealtime(payload))
+    .subscribe();
+}
+function startHandleRealtime(payload){
+  if(payload.eventType==='DELETE'){
+    const oldId=payload.old && payload.old.id; if(!oldId) return;
+    startState.active=startState.active.filter(a=>a.id!==oldId);
+    startState.logRows=startState.logRows.filter(l=>l.id!==oldId);
+    startRenderCards(); startSyncOverlay();
+    if(document.getElementById('modalOverlay') && document.getElementById('modalOverlay').style.display!=='none') startOpenLogModal();
+    return;
+  }
+  const row=payload.new;
+  if(!row || row.date!==startState.viewDate) return;
+  if(payload.eventType==='INSERT'){
+    const r=startFromRow(payload.new);
+    if(r.status==='out' && !startState.active.some(a=>a.id===r.id)){ startState.active.unshift(r); startRenderCards(); startSyncOverlay(); }
+  } else if(payload.eventType==='UPDATE'){
+    const r=startFromRow(payload.new);
+    if(r.status==='returned'){
+      startState.active=startState.active.filter(a=>a.id!==r.id);
+      if(!startState.logRows.some(l=>l.id===r.id)) startState.logRows.unshift(r);
+      startRenderCards(); startSyncOverlay(); return;
+    }
+    const cur=startState.active.find(a=>a.id===r.id);
+    if(cur){ cur.alarmCleared=r.alarmCleared; startSyncOverlay(); }
+  }
+}
+ 
+/* ---- 초과 알림 ---- */
+function startFireAlarm(a){
+  startBeep();
+  startSystemNotify(a.name, a.limitSec);
+  startShowOverlay();
+}
+function startSystemNotify(name, limitSec){
+  if(!('Notification' in window) || Notification.permission!=='granted') return;
+  try{
+    const n=new Notification('STaRT 시간 초과', {
+      body:`${name} 학생이 ${Math.round(limitSec/60)}분을 넘겼습니다. 복귀 확인이 필요합니다.`,
+      tag:'start-'+name+'-'+Date.now(), requireInteraction:true });
+    n.onclick=()=>{ window.focus(); n.close(); };
+  }catch(e){ console.warn(e); }
+}
+let startAudioCtx=null;
+function startUnlockAudio(){ if(startAudioCtx && startAudioCtx.state==='suspended') startAudioCtx.resume(); }
+function startBeep(){
+  if(startState.muted) return;
+  try{
+    startAudioCtx=startAudioCtx||new (window.AudioContext||window.webkitAudioContext)();
+    let t=startAudioCtx.currentTime;
+    for(let i=0;i<3;i++){
+      const o=startAudioCtx.createOscillator(),g=startAudioCtx.createGain();
+      o.connect(g);g.connect(startAudioCtx.destination);
+      o.type='square';o.frequency.value=i%2?660:880;
+      g.gain.setValueAtTime(0.001,t);g.gain.exponentialRampToValueAtTime(0.25,t+0.02);
+      g.gain.exponentialRampToValueAtTime(0.001,t+0.3);
+      o.start(t);o.stop(t+0.32);t+=0.34;
+    }
+  }catch(e){}
+}
+ 
+/* ---- 오버레이 ---- */
+function startShowOverlay(){
+  let ov=document.getElementById('stOverlay');
+  if(!ov){
+    ov=document.createElement('div'); ov.id='stOverlay';
+    ov.innerHTML=`<div class="st-ov-inner">
+      <div class="st-ov-tag"><i class="ti ti-clock-exclamation" style="font-size:18px"></i>시간 초과</div>
+      <div class="st-ov-names" id="stOvNames"></div>
+      <div class="st-ov-sub">복귀 확인이 필요합니다</div>
+      <button class="st-ov-btn" onclick="startClearAlarm()">확인했습니다</button>
+    </div>`;
+    document.body.appendChild(ov);
+  }
+  startUpdateOverlay();
+  ov.style.display='flex';
+}
+function startUpdateOverlay(){
+  const box=document.getElementById('stOvNames'); if(!box) return;
+  const now=new Date();
+  const over=startState.active.filter(a=>{ const e=Math.floor((now-new Date(a.leftAt))/1000); return e>=a.limitSec && !a.alarmCleared; });
+  if(!over.length){ startCloseOverlay(); return; }
+  box.innerHTML=over.map(a=>{
+    const e=Math.floor((now-new Date(a.leftAt))/1000);
+    const k=a.kind==='exam'?'시험':'외출';
+    return `<div class="st-ov-row"><span class="st-ov-name">${esc(a.name)}</span><span class="st-ov-over">${k} +${startDur(e-a.limitSec)}</span></div>`;
+  }).join('');
+}
+function startCloseOverlay(){ const ov=document.getElementById('stOverlay'); if(ov) ov.style.display='none'; }
+function startSyncOverlay(){
+  const now=new Date();
+  const anyOver=startState.active.some(a=>{ const e=Math.floor((now-new Date(a.leftAt))/1000); return e>=a.limitSec && !a.alarmCleared; });
+  if(anyOver) startShowOverlay(); else startCloseOverlay();
+}
+ 
+/* ---- CSV ---- */
+function startDownloadCSV(){
+  if(!startState.logRows.length){ toast('기록이 없습니다','err'); return; }
+  const rows=[['구분','이름','반','담임','시작','복귀','소요(분:초)','제한(분)','결과']];
+  startState.logRows.slice().reverse().forEach(r=>{
+    const elp=r.returnedAt?Math.round((new Date(r.returnedAt)-new Date(r.leftAt))/1000):null;
+    const over=elp!=null && elp>r.limitSec;
+    rows.push([r.kind==='exam'?'시험':'외출', r.name, r.cls||'', r.teacher||'', startHM(r.leftAt),
+      r.returnedAt?startHM(r.returnedAt):'', elp!=null?startDur(elp):'', Math.round(r.limitSec/60), over?'초과':'정상']);
+  });
+  const csv='\uFEFF'+rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob=new Blob([csv],{type:'text/csv'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`STaRT_${getBranch(session.branchId)?.name||session.branchId}_${startState.viewDate}.csv`;
+  a.click();
+}
