@@ -1826,39 +1826,78 @@ function renderClosingHub(){
   el('content').innerHTML = html;
 }
 
-/* 월별 표 한 개 렌더 (강사별/레벨별/학년별 공용).
-   totalRecs를 주면 합계는 그 원본 전체에서 한 번씩만 계산(담임변경 중복 방지). */
-function closingTable(groups, months, firstColLabel, totalRecs){
+function closingTable(groups, months, firstColLabel, totalRecs, opts={}){
+  const showCA = opts.showCA !== false;   // 기본 true (강사별). 끄려면 {showCA:false}
   const monthNames = months.map(m=>m+'월');
+  const COLSPAN_MONTH = 6;
+ 
+  // 한 그룹의 특정 레코드셋으로 월별 셀 HTML 생성 (split 없이 단순 — CHESS/ACE 행용)
+  function cellsHtmlSimple(recs, extraCls){
+    const r = monthlyClosing(recs, months);
+    return r.cells.map(c=>{
+      const trCell = c.transfer ? `<span style="color:var(--warn)">${c.transfer}</span>` : '-';
+      const tiCell = c.transferIn ? `<span style="color:var(--pos)">${c.transferIn}</span>` : '-';
+      return `<td class="num cc${extraCls}">${c.monthStart||'-'}</td>
+        <td class="num cc${extraCls}">${c.newThis||'-'}</td>
+        <td class="num cc${extraCls}">${tiCell}</td>
+        <td class="num cc${extraCls}">${c.withdraw||'-'}</td>
+        <td class="num cc${extraCls}">${trCell}</td>
+        <td class="num cc${extraCls}"><span style="color:var(--ink-3)">${c.baseNew?c.rate.toFixed(1)+'%':'-'}</span></td>`;
+    }).join('');
+  }
+ 
   const bodyRows = groups.map((g, i)=>{
+    // 합계행: 기존 로직 그대로 (split 정확 반영)
     const r = monthlyClosing(g.recs, months, g.activeMonths, g.splits);
     const splitMonths = new Set((g.splits||[]).map(s=>s.month));
     const monthCells = r.cells.map(c=>{
-     if(c.blank) return `<td class="num cc cell-na">-</td><td class="num cc cell-na">-</td><td class="num cc cell-na">-</td><td class="num cc cell-na">-</td><td class="num cc cell-na">-</td><td class="num cc cell-na">-</td>`;
+      if(c.blank) return `<td class="num cc cell-na">-</td>`.repeat(6);
       const cls = splitMonths.has(c.month) ? ' cell-split' : '';
       const trCell = c.transfer ? `<span style="color:var(--warn)">${c.transfer}</span>` : '-';
       const tiCell = c.transferIn ? `<span style="color:var(--pos)">${c.transferIn}</span>` : '-';
       return `<td class="num cc${cls}">${c.monthStart||'-'}</td>
-      <td class="num cc${cls}">${c.newThis||'-'}</td>
-      <td class="num cc${cls}">${tiCell}</td>
-      <td class="num cc${cls}">${c.withdraw||'-'}</td>
-      <td class="num cc${cls}">${trCell}</td>
-      <td class="num cc${cls}"><span style="color:${c.rate>=10?'var(--neg)':c.rate>=5?'var(--warn)':'var(--ink-2)'}">${c.baseNew?c.rate.toFixed(1)+'%':'-'}</span></td>`;
+        <td class="num cc${cls}">${c.newThis||'-'}</td>
+        <td class="num cc${cls}">${tiCell}</td>
+        <td class="num cc${cls}">${c.withdraw||'-'}</td>
+        <td class="num cc${cls}">${trCell}</td>
+        <td class="num cc${cls}"><span style="color:${c.rate>=10?'var(--neg)':c.rate>=5?'var(--warn)':'var(--ink-2)'}">${c.baseNew?c.rate.toFixed(1)+'%':'-'}</span></td>`;
     }).join('');
-    return `<tr>
-      <td class="cc">${i+1}</td>
-      <td class="cc"><span class="nm">${esc(g.name)}</span></td>
+ 
+    const rowspan = showCA ? 3 : 1;
+    const totalRow = `<tr class="clos-main">
+      <td class="cc" rowspan="${rowspan}">${i+1}</td>
+      <td class="cc" rowspan="${rowspan}"><span class="nm">${esc(g.name)}</span></td>
+      ${showCA?`<td class="cc clos-catag clos-sum">합계</td>`:''}
       ${monthCells}
       <td class="num cc" style="font-weight:700">${r.totWithdraw||'-'}</td>
       <td class="num cc" style="font-weight:700;color:${r.totTransfer?'var(--warn)':'inherit'}">${r.totTransfer||'-'}</td>
       <td class="num cc"><span style="font-weight:700;color:${r.avgRate>=10?'var(--neg)':r.avgRate>=5?'var(--warn)':'var(--brand)'}">${r.avgRate?r.avgRate.toFixed(1)+'%':'-'}</span></td>
     </tr>`;
+ 
+    if(!showCA) return totalRow;
+ 
+    // CHESS / ACE 행 (단순 집계)
+    const chessRecs = g.recs.filter(r=>isChess(r.className));
+    const aceRecs   = g.recs.filter(r=>!isChess(r.className));
+    const cR = monthlyClosing(chessRecs, months);
+    const aR = monthlyClosing(aceRecs, months);
+    const caRow = (label, tagCls, recs, mc)=>`<tr class="clos-ca">
+      <td class="cc clos-catag ${tagCls}">${label}</td>
+      ${cellsHtmlSimple(recs, ' clos-ca-cell')}
+      <td class="num cc clos-ca-cell">${mc.totWithdraw||'-'}</td>
+      <td class="num cc clos-ca-cell">${mc.totTransfer||'-'}</td>
+      <td class="num cc clos-ca-cell">${mc.avgRate?mc.avgRate.toFixed(1)+'%':'-'}</td>
+    </tr>`;
+ 
+    return totalRow
+      + caRow('CHESS','clos-chess', chessRecs, cR)
+      + caRow('ACE','clos-ace', aceRecs, aR);
   }).join('');
-
-  // 합계 — 원본 전체에서 한 번씩 계산 (담임변경으로 학생이 두 줄에 중복돼도 1회만)
+ 
+  // 합계(맨 아래)
   const baseForTotal = totalRecs || groups.reduce((acc,g)=>acc.concat(g.recs),[]);
   const totR = monthlyClosing(baseForTotal, months);
-const totalCells = totR.cells.map(c=>{
+  const totalCells = totR.cells.map(c=>{
     const trCell = c.transfer ? `<span style="color:var(--warn)">${c.transfer}</span>` : '-';
     const tiCell = c.transferIn ? `<span style="color:var(--pos)">${c.transferIn}</span>` : '-';
     return `<td class="num cc">${c.monthStart||'-'}</td><td class="num cc">${c.newThis||'-'}</td>
@@ -1866,26 +1905,25 @@ const totalCells = totR.cells.map(c=>{
       <td class="num cc">${c.withdraw||'-'}</td><td class="num cc">${trCell}</td>
       <td class="num cc">${c.baseNew?c.rate.toFixed(1)+'%':'-'}</td>`;
   }).join('');
-  const totAvg = totR.avgRate;
-  const totWithdrawSum = totR.totWithdraw;
-  const totTransferSum = totR.totTransfer;
-
+ 
   const monthHeads = monthNames.map(mn=>`<th class="cc" colspan="6">${mn}</th>`).join('');
   const subHeads = months.map(()=>`<th class="cc">월초</th><th class="cc">신규</th><th class="cc">전입</th><th class="cc">퇴원</th><th class="cc">전출</th><th class="cc">퇴원율</th>`).join('');
-
+  const caHead = showCA ? `<th class="cc" rowspan="2">구분</th>` : '';
+  const caFootCell = showCA ? `<td class="cc"></td>` : '';
+ 
   return `<div class="table-wrap"><div class="table-scroll">
-    <table class="rank-table closing-table">
+    <table class="rank-table closing-table${showCA?' closing-ca':''}">
       <thead>
-        <tr><th class="cc" rowspan="2">#</th><th class="cc" rowspan="2">${firstColLabel}</th>${monthHeads}
+        <tr><th class="cc" rowspan="2">#</th><th class="cc" rowspan="2">${firstColLabel}</th>${caHead}${monthHeads}
           <th class="cc" colspan="3">학기 계</th></tr>
         <tr>${subHeads}<th class="cc">총퇴원</th><th class="cc">총전출</th><th class="cc">평균퇴원율</th></tr>
       </thead>
       <tbody>${bodyRows}</tbody>
       <tfoot>
-        <tr class="closing-total"><td class="cc"></td><td class="cc nm">합계</td>${totalCells}
-          <td class="num cc" style="font-weight:800">${totWithdrawSum}</td>
-          <td class="num cc" style="font-weight:800;color:${totTransferSum?'var(--warn)':'inherit'}">${totTransferSum}</td>
-          <td class="num cc" style="font-weight:800">${totAvg.toFixed(1)}%</td></tr>
+        <tr class="closing-total"><td class="cc"></td><td class="cc nm">합계</td>${caFootCell}${totalCells}
+          <td class="num cc" style="font-weight:800">${totR.totWithdraw}</td>
+          <td class="num cc" style="font-weight:800;color:${totR.totTransfer?'var(--warn)':'inherit'}">${totR.totTransfer}</td>
+          <td class="num cc" style="font-weight:800">${totR.avgRate.toFixed(1)}%</td></tr>
       </tfoot>
     </table>
   </div></div>`;
@@ -1936,7 +1974,7 @@ function renderClosing(branchId){
   }
 
   let html = headHtml + `
-    ${closingTable(groups, months, firstCol, recs)}
+    ${closingTable(groups, months, firstCol, recs, {showCA: tab==='teacher'})}
     ${note?`<div class="closing-note">${esc(note)}</div>`:''}
     <div style="margin-top:12px;font-size:12px;color:var(--ink-3)">
       월초+신규 = 그 달 시작 인원 + 그 달 신규 · 퇴원율 = 퇴원 ÷ (월초+신규) · 평균퇴원율 = 월별 퇴원율의 평균 · 전출은 퇴원에서 제외됩니다.
