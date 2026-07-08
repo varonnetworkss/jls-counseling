@@ -4815,31 +4815,21 @@ function startBindUI(){
 
 /* 상단 컨트롤 위에서 방향키 처리 (input은 startOnKeydown이 먼저 잡음) */
 function startGlobalKey(e){
-  // STaRT 화면일 때만
   if(!document.getElementById('stModeTog')) return;
   const active=document.activeElement;
-  const onStep = startFocusSteps().includes(active);
-  if(!onStep) return;
-
-  // 이름 입력칸은 startOnKeydown에서 따로 처리하므로 여기선 제외
+  if(!startFocusSteps().includes(active)) return;
   if(active && active.id==='stInput') return;
 
-  if(e.key==='ArrowRight'){ e.preventDefault(); startFocusStep(1); return; }
-  if(e.key==='ArrowLeft'){ e.preventDefault(); startFocusStep(-1); return; }
+  if(active.id==='stMin' && (e.key==='ArrowUp'||e.key==='ArrowDown')) return;
 
-  // 시험/외출 버튼: ↑↓ 없음, Enter/Space로 선택
-  if(active.classList && active.classList.contains('st-mode-btn')){
-    if(e.key==='Enter'||e.key===' '){ e.preventDefault(); startSetMode(active.dataset.mode); }
-    return;
-  }
-  // 시간 드롭다운(select): ↑↓는 브라우저 기본(옵션 이동)에 맡김
-  if(active.id==='stMin'){
-    // 좌우로만 칸 이동, 상하는 select 기본 동작
-    return;
-  }
-  // 버튼들(등록/소리/알림): Enter/Space로 클릭
-  if(active.tagName==='BUTTON'){
-    if(e.key==='Enter'||e.key===' '){ e.preventDefault(); active.click(); }
+  if(e.key==='ArrowRight'){ e.preventDefault(); e.stopPropagation(); startFocusStep(1); return; }
+  if(e.key==='ArrowLeft'){ e.preventDefault(); e.stopPropagation(); startFocusStep(-1); return; }
+
+  if(e.key==='Enter'||e.key===' '){
+    if(active.classList && active.classList.contains('st-mode-btn')){
+      e.preventDefault(); startSetMode(active.dataset.mode); return;
+    }
+    if(active.tagName==='BUTTON'){ e.preventDefault(); active.click(); }
   }
 }
 
