@@ -1739,6 +1739,12 @@ function renderRosterDetail(branchId){
       <button class="sb-btn ${tab==='withdraw'?'on':''}" onclick="setRosterTab('withdraw')">퇴원생 ${c.wdCnt}</button>
       <button class="sb-btn ${tab==='transferOut'?'on':''}" onclick="setRosterTab('transferOut')">전출 ${c.transferOutCnt}</button>
     </div>
+<div style="margin:0 0 12px;display:flex;gap:8px;align-items:center">
+      <span style="font-size:12.5px;color:var(--ink-3)">이 목록</span>
+      <span style="font-size:12.5px;font-weight:600;background:#E6F1FB;color:#0C447C;border-radius:6px;padding:3px 10px">CHESS ${countChessAce(rows).chess}</span>
+      <span style="font-size:12.5px;font-weight:600;background:#E1F5EE;color:#085041;border-radius:6px;padding:3px 10px">ACE ${countChessAce(rows).ace}</span>
+      <span style="font-size:12.5px;color:var(--ink-3)">· 합 ${rows.length}</span>
+    </div>
     <div class="roster-filter">
       <select onchange="setRosterTeacher(this.value)">
         <option value="">담임 전체</option>
@@ -1773,11 +1779,7 @@ function renderRosterDetail(branchId){
         </tbody>
       </table>
     </div></div>
-    <div class="roster-ca" style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-      <span style="font-size:12px;color:var(--ink-3)">총 ${rows.length}명${fTeacher?` · ${esc(fTeacher)} 담임`:''}</span>
-      <span class="ca-chess" style="font-size:12px;font-weight:600;background:#E6F1FB;color:#0C447C;border-radius:6px;padding:3px 10px">CHESS ${countChessAce(rows).chess}</span>
-      <span class="ca-ace" style="font-size:12px;font-weight:600;background:#E1F5EE;color:#085041;border-radius:6px;padding:3px 10px">ACE ${countChessAce(rows).ace}</span>
-    </div>`;
+<div style="margin-top:10px;font-size:12px;color:var(--ink-3)">총 ${rows.length}명${fTeacher?` · ${esc(fTeacher)} 담임`:''} · 최근 순</div>`;
   }
   el('content').innerHTML = html;
   if(state.rosterQuery) setRosterQuery(state.rosterQuery);
