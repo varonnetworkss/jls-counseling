@@ -4874,3 +4874,41 @@ function startOnKeydown(e){
   }
   if(e.key==='Escape'){ if(box) box.style.display='none'; }
 }
+/* ============================================================================
+   CHESS / ACE 판정 — app.js 아무 데나(함수 밖) 붙여넣기
+   반 이름(className)에서 레벨 코드를 뽑아 CHESS인지 ACE인지 판정.
+   예: "[IS2]SU1/MWF/IS2/J" → 레벨 "IS" → CHESS
+       "[LSA1]SP1/MWF/E"    → 레벨 "LSA" → CHESS
+       "[A1]SU2/TTH"        → 레벨 "A"  → ACE
+       "[HM2]..."           → 레벨 "HM" → ACE
+   ============================================================================ */
+
+/* CHESS 레벨 목록 (이 알파벳으로 시작하면 CHESS, 나머지는 ACE) */
+const CHESS_LEVELS = ['IS','DSA','DSB','DSC','DSD','LSA','LSB','LSC','LSD','MSA','MSB'];
+
+/* 반 이름에서 레벨 알파벳만 추출: "[LSA1]SP1/..." → "LSA" */
+function levelAlphaOf(className){
+  const m = String(className||'').match(/^\s*\[([A-Za-z]+)/);  // 대괄호 안 알파벳만 (숫자 앞까지)
+  return m ? m[1].toUpperCase() : '';
+}
+
+/* CHESS 여부 판정 → true=CHESS, false=ACE */
+function isChess(className){
+  const alpha = levelAlphaOf(className);
+  if(!alpha) return false;  // 레벨 못 읽으면 일단 ACE로
+  return CHESS_LEVELS.includes(alpha);
+}
+
+/* 구분 라벨 반환: 'CHESS' | 'ACE' */
+function chessAceOf(className){
+  return isChess(className) ? 'CHESS' : 'ACE';
+}
+
+/* 레코드 배열을 받아 {chess, ace, total} 개수로 집계 */
+function countChessAce(records){
+  let chess=0, ace=0;
+  records.forEach(r=>{
+    if(isChess(r.className)) chess++; else ace++;
+  });
+  return { chess, ace, total: chess+ace };
+}
