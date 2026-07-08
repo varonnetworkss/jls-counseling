@@ -1643,9 +1643,9 @@ function rosterRows(branchId, semId, tab){
     const mv = db.studentMovements.find(m=>m.studentId===r.studentId && m.branchId===branchId && m.semesterId===semId && m.type===mvType);
     const date = isIn ? (r.enrollDate || (mv&&mv.date) || '-')
                       : (r.withdrawDate || (mv&&mv.date) || '-');
-    rows.push({
+rows.push({
       name:s.name, code:s.code, school:s.school||'', grade:s.grade||'',
-      classLabel:r.classLabel||r.className||'-', teacher:r.teacher||'-',
+      classLabel:r.classLabel||r.className||'-', className:r.className||'', teacher:r.teacher||'-',
       date, memo:(mv&&mv.memo)||'',
     });
   });
@@ -1773,7 +1773,11 @@ function renderRosterDetail(branchId){
         </tbody>
       </table>
     </div></div>
-    <div style="margin-top:10px;font-size:12px;color:var(--ink-3)">총 ${rows.length}명${fTeacher?` · ${esc(fTeacher)} 담임`:''} · 최근 순</div>`;
+    <div class="roster-ca" style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <span style="font-size:12px;color:var(--ink-3)">총 ${rows.length}명${fTeacher?` · ${esc(fTeacher)} 담임`:''}</span>
+      <span class="ca-chess" style="font-size:12px;font-weight:600;background:#E6F1FB;color:#0C447C;border-radius:6px;padding:3px 10px">CHESS ${countChessAce(rows).chess}</span>
+      <span class="ca-ace" style="font-size:12px;font-weight:600;background:#E1F5EE;color:#085041;border-radius:6px;padding:3px 10px">ACE ${countChessAce(rows).ace}</span>
+    </div>`;
   }
   el('content').innerHTML = html;
   if(state.rosterQuery) setRosterQuery(state.rosterQuery);
