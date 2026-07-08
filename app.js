@@ -623,17 +623,37 @@ function calcRates(recs, branchId, semId){
 function headcountClean(branchId, semId){
   const recs = recordsOf(branchId, semId);
   const total = recs.length;
-  // 신규: origin이 new 또는 return(복귀)이면서 전입이 아닌 학생 (복귀생도 신규로 카운트)
-  const newCnt = recs.filter(r=>(r.origin==='new' || r.origin==='return') && !r.transferIn).length;
-  // 전입: 다른 분원에서 넘어온 학생 (신규와 분리)
-  const transferIn = recs.filter(r=>r.transferIn).length;
-  // 퇴원: 전출 제외한 순수 퇴원만 (전출은 퇴원율에 반영 안 함)
-  const withdraw = recs.filter(r=>r.status==='withdraw' && !r.transfer).length;
-  const transfer = recs.filter(r=>r.status==='withdraw' && r.transfer).length;
-  const active = recs.filter(r=>r.status==='active').length;
-  // 학기초 인원 = 전체 - 신규 - 전입 (둘 다 학기 중 들어온 인원)
+  const newRecs      = recs.filter(r=>(r.origin==='new' || r.origin==='return') && !r.transferIn);
+  const transferInR  = recs.filter(r=>r.transferIn);
+  const withdrawR    = recs.filter(r=>r.status==='withdraw' && !r.transfer);
+  const transferR    = recs.filter(r=>r.status==='withdraw' && r.transfer);
+  const activeR      = recs.filter(r=>r.status==='active');
+ 
+  const newCnt = newRecs.length;
+  const transferIn = transferInR.length;
+  const withdraw = withdrawR.length;
+  const transfer = transferR.length;
+  const active = activeR.length;
   const startCount = total - newCnt - transferIn;
-  return { start:startCount, newCnt, transferIn, withdraw, transfer, active, net:newCnt + transferIn - withdraw - transfer };
+ 
+  // 학기초 = 재원 + 퇴원 + 전출 - (학기중 들어온 신규/전입)  → 레코드로 직접 계산
+  const startR = recs.filter(r=> !((r.origin==='new'||r.origin==='return') && !r.transferIn) && !r.transferIn );
+ 
+  const ca = recs => countChessAce(recs);   // {chess, ace, total}
+ 
+  return {
+    start:startCount, newCnt, transferIn, withdraw, transfer, active,
+    net:newCnt + transferIn - withdraw - transfer,
+    // CHESS/ACE 분리 (각 카드별)
+    ca: {
+      start:     ca(startR),
+      newCnt:    ca(newRecs),
+      transferIn:ca(transferInR),
+      withdraw:  ca(withdrawR),
+      transfer:  ca(transferR),
+      active:    ca(activeR),
+    }
+  };
 }
 
 /* 담임별 집계 */
@@ -948,7 +968,14 @@ function kpiCard(label, value, opts={}){
   const cls = opts.accent ? ' accent' : '';
   let v = opts.delta!=null ? deltaHtml(opts.delta) :
           `<span class="num">${esc(value)}</span>${opts.unit?`<small>${opts.unit}</small>`:''}`;
-  return `<div class="kpi${cls}"><div class="kl">${esc(label)}</div><div class="kv">${v}</div></div>`;
+  let badges = '';
+  if(opts.ca){
+    badges = `<div class="kpi-ca">
+      <span class="ca-chess">CHESS ${opts.ca.chess}</span>
+      <span class="ca-ace">ACE ${opts.ca.ace}</span>
+    </div>`;
+  }
+  return `<div class="kpi${cls}"><div class="kl">${esc(label)}</div><div class="kv">${v}</div>${badges}</div>`;
 }
 
 /* 상담 5단계 막대 (카드 안) */
@@ -1309,12 +1336,12 @@ function renderBranchDashboard(){
       <div class="sub">${esc(db.semesters.find(s=>s.id===semId).name)} 운영 현황</div>
     </div>
 <div class="kpi-row c6">
-      ${kpiCard('학기초 인원', hc.start, {unit:'명'})}
-      ${kpiCard('신규생', hc.newCnt, {unit:'명'})}
-      ${kpiCard('전입', hc.transferIn, {unit:'명'})}
-      ${kpiCard('퇴원생', hc.withdraw, {unit:'명'})}
-      ${kpiCard('전출', hc.transfer, {unit:'명'})}
-      ${kpiCard('현 재원생', hc.active, {unit:'명', accent:true})}
+      ${kpiCard('학기초 인원', hc.start, {unit:'명', ca:hc.ca.start})}
+      ${kpiCard('신규생', hc.newCnt, {unit:'명', ca:hc.ca.newCnt})}
+      ${kpiCard('전입', hc.transferIn, {unit:'명', ca:hc.ca.transferIn})}
+      ${kpiCard('퇴원생', hc.withdraw, {unit:'명', ca:hc.ca.withdraw})}
+      ${kpiCard('전출', hc.transfer, {unit:'명', ca:hc.ca.transfer})}
+      ${kpiCard('현 재원생', hc.active, {unit:'명', accent:true, ca:hc.ca.active})}
     </div>
     <div class="sect-head"><h3>전체 상담률</h3>
     <span class="cnt">단계별 진행 현황</span></div>
