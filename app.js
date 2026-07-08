@@ -4748,3 +4748,127 @@ function startInjectStyles(){
     @media(max-width:900px){.st-columns{grid-template-columns:1fr}}`;
   document.head.appendChild(st);
 }
+/* ============================================================================
+   STaRT 전체 키보드 내비게이션 — 아래 3개를 app.js에서 찾아 교체 + 1개 추가
+     · startBindUI      (교체)
+     · startOnKeydown   (교체)
+     · startSetMode     (교체)
+     · startFocusStep   (추가 — 함수 밖 아무 데나)
+   ----------------------------------------------------------------------------
+   동작:
+   ←→ : 상단 컨트롤 이동 (시험/외출 → 기본시간 → 이름 → 등록 → 소리 → 알림허용)
+   ↑↓ : 시간 드롭다운 열기·선택 / 이름칸에서 자동완성 학생 선택
+   Enter : 현재 위치 실행
+   ============================================================================ */
+
+/* 상단 컨트롤 이동 순서 */
+function startFocusSteps(){
+  // 실제 존재하는 것만 순서대로
+  return ['stModeExam','stModeOuting','stMin','stInput','stAddBtn','stMuteBtn','stPermBtn']
+    .map(id=>document.getElementById(id)).filter(Boolean);
+}
+function startFocusStep(dir){
+  const steps=startFocusSteps();
+  if(!steps.length) return;
+  const active=document.activeElement;
+  let idx=steps.indexOf(active);
+  if(idx<0) idx = dir>0 ? -1 : 0;
+  idx = Math.min(steps.length-1, Math.max(0, idx+dir));
+  const t=steps[idx];
+  if(t){ t.focus(); if(t.tagName==='INPUT'&&t.type!=='number') t.select && t.select(); }
+}
+
+function startSetMode(mode){
+  startMode=mode;
+  const tog=el('stModeTog'); if(!tog) return;
+  tog.querySelectorAll('.st-mode-btn').forEach(b=> b.classList.toggle('active', b.dataset.mode===mode));
+}
+
+function startBindUI(){
+  const input=el('stInput');
+  input.addEventListener('input', startOnInput);
+
+  // 모드 버튼에 id 부여 (키보드 이동 대상)
+  const tog=el('stModeTog');
+  const modeBtns=tog.querySelectorAll('.st-mode-btn');
+  modeBtns.forEach(btn=>{
+    btn.id = btn.dataset.mode==='exam' ? 'stModeExam' : 'stModeOuting';
+    btn.tabIndex=0;
+    btn.onclick=()=>{ startSetMode(btn.dataset.mode); btn.focus(); };
+  });
+
+  el('stAddBtn').onclick=()=>{
+    const m=startFindStudents(input.value);
+    if(m.length===1) startAdd(m[0]);
+    else if(m.length>1){ startOnInput(); toast('여러 명 검색됨 — ↑↓로 선택'); }
+    else toast('일치하는 학생이 없습니다','err');
+  };
+  el('stMuteBtn').onclick=()=>{ startState.muted=!startState.muted; el('stMuteBtn').textContent=startState.muted?'🔇':'🔊'; };
+  el('stPermBtn').onclick=startAskPerm;
+  el('stLogBtn').onclick=startOpenLogModal;
+
+  // 전역 키다운 (상단 영역에서 ←→ 이동)
+  document.addEventListener('keydown', startGlobalKey, true);
+  input.addEventListener('keydown', startOnKeydown);
+  document.addEventListener('click', startDocClick);
+}
+
+/* 상단 컨트롤 위에서 방향키 처리 (input은 startOnKeydown이 먼저 잡음) */
+function startGlobalKey(e){
+  // STaRT 화면일 때만
+  if(!document.getElementById('stModeTog')) return;
+  const active=document.activeElement;
+  const onStep = startFocusSteps().includes(active);
+  if(!onStep) return;
+
+  // 이름 입력칸은 startOnKeydown에서 따로 처리하므로 여기선 제외
+  if(active && active.id==='stInput') return;
+
+  if(e.key==='ArrowRight'){ e.preventDefault(); startFocusStep(1); return; }
+  if(e.key==='ArrowLeft'){ e.preventDefault(); startFocusStep(-1); return; }
+
+  // 시험/외출 버튼: ↑↓ 없음, Enter/Space로 선택
+  if(active.classList && active.classList.contains('st-mode-btn')){
+    if(e.key==='Enter'||e.key===' '){ e.preventDefault(); startSetMode(active.dataset.mode); }
+    return;
+  }
+  // 시간 드롭다운(select): ↑↓는 브라우저 기본(옵션 이동)에 맡김
+  if(active.id==='stMin'){
+    // 좌우로만 칸 이동, 상하는 select 기본 동작
+    return;
+  }
+  // 버튼들(등록/소리/알림): Enter/Space로 클릭
+  if(active.tagName==='BUTTON'){
+    if(e.key==='Enter'||e.key===' '){ e.preventDefault(); active.click(); }
+  }
+}
+
+/* 이름 입력칸 전용 키 처리 */
+function startOnKeydown(e){
+  const box=el('stAc');
+  const open = box && box.style.display==='block' && startAcList.length>0;
+
+  // 자동완성 목록이 떠 있으면 ↑↓ = 학생 선택
+  if(e.key==='ArrowDown'){
+    if(open){ e.preventDefault(); startAcSel=Math.min(startAcSel+1,startAcList.length-1); startUpdateAcSel(); }
+    return;
+  }
+  if(e.key==='ArrowUp'){
+    if(open){ e.preventDefault(); startAcSel=Math.max(startAcSel-1,0); startUpdateAcSel(); }
+    return;
+  }
+  // ←→ = 칸 이동 (이름칸도 무조건 이동)
+  if(e.key==='ArrowLeft'){ e.preventDefault(); if(box) box.style.display='none'; startFocusStep(-1); return; }
+  if(e.key==='ArrowRight'){ e.preventDefault(); if(box) box.style.display='none'; startFocusStep(1); return; }
+
+  if(e.key==='Enter'){
+    e.preventDefault();
+    if(open && startAcSel>=0){ startAdd(startAcList[startAcSel]); return; }
+    const m=startFindStudents(el('stInput').value);
+    if(m.length===1) startAdd(m[0]);
+    else if(m.length>1) startOnInput();
+    else toast('일치하는 학생이 없습니다','err');
+    return;
+  }
+  if(e.key==='Escape'){ if(box) box.style.display='none'; }
+}
