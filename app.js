@@ -1905,6 +1905,22 @@ function closingTable(groups, months, firstColLabel, totalRecs, opts={}){
       <td class="num cc">${c.withdraw||'-'}</td><td class="num cc">${trCell}</td>
       <td class="num cc">${c.baseNew?c.rate.toFixed(1)+'%':'-'}</td>`;
   }).join('');
+
+  // 합계 CHESS/ACE
+  const chessTotRecs = baseForTotal.filter(r=>isChess(r.className));
+  const aceTotRecs   = baseForTotal.filter(r=>!isChess(r.className));
+  function footCellsSimple(recs){
+    const rr = monthlyClosing(recs, months);
+    return rr.cells.map(c=>{
+      const trCell = c.transfer ? `<span style="color:var(--warn)">${c.transfer}</span>` : '-';
+      const tiCell = c.transferIn ? `<span style="color:var(--pos)">${c.transferIn}</span>` : '-';
+      return `<td class="num cc">${c.monthStart||'-'}</td><td class="num cc">${c.newThis||'-'}</td>
+        <td class="num cc">${tiCell}</td><td class="num cc">${c.withdraw||'-'}</td><td class="num cc">${trCell}</td>
+        <td class="num cc">${c.baseNew?c.rate.toFixed(1)+'%':'-'}</td>`;
+    }).join('');
+  }
+  const cTot = monthlyClosing(chessTotRecs, months);
+  const aTot = monthlyClosing(aceTotRecs, months);
  
   const monthHeads = monthNames.map(mn=>`<th class="cc" colspan="6">${mn}</th>`).join('');
   const subHeads = months.map(()=>`<th class="cc">월초</th><th class="cc">신규</th><th class="cc">전입</th><th class="cc">퇴원</th><th class="cc">전출</th><th class="cc">퇴원율</th>`).join('');
@@ -1919,11 +1935,17 @@ function closingTable(groups, months, firstColLabel, totalRecs, opts={}){
         <tr>${subHeads}<th class="cc">총퇴원</th><th class="cc">총전출</th><th class="cc">평균퇴원율</th></tr>
       </thead>
       <tbody>${bodyRows}</tbody>
-      <tfoot>
-        <tr class="closing-total"><td class="cc"></td><td class="cc nm">합계</td>${caFootCell}${totalCells}
+<tfoot>
+        <tr class="closing-total"><td class="cc"></td><td class="cc nm" ${showCA?'rowspan="3"':''}>합계</td>${showCA?`<td class="cc clos-catag clos-sum">합계</td>`:''}${totalCells}
           <td class="num cc" style="font-weight:800">${totR.totWithdraw}</td>
           <td class="num cc" style="font-weight:800;color:${totR.totTransfer?'var(--warn)':'inherit'}">${totR.totTransfer}</td>
           <td class="num cc" style="font-weight:800">${totR.avgRate.toFixed(1)}%</td></tr>
+        ${showCA?`
+        <tr class="closing-total clos-ca"><td class="cc clos-catag clos-chess">CHESS</td>${footCellsSimple(chessTotRecs)}
+          <td class="num cc">${cTot.totWithdraw||'-'}</td><td class="num cc">${cTot.totTransfer||'-'}</td><td class="num cc">${cTot.avgRate?cTot.avgRate.toFixed(1)+'%':'-'}</td></tr>
+        <tr class="closing-total clos-ca"><td class="cc clos-catag clos-ace">ACE</td>${footCellsSimple(aceTotRecs)}
+          <td class="num cc">${aTot.totWithdraw||'-'}</td><td class="num cc">${aTot.totTransfer||'-'}</td><td class="num cc">${aTot.avgRate?aTot.avgRate.toFixed(1)+'%':'-'}</td></tr>
+        `:''}
       </tfoot>
     </table>
   </div></div>`;
