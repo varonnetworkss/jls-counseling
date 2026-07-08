@@ -1740,7 +1740,6 @@ function renderRosterDetail(branchId){
       <button class="sb-btn ${tab==='transferOut'?'on':''}" onclick="setRosterTab('transferOut')">전출 ${c.transferOutCnt}</button>
     </div>
 <div style="margin:0 0 12px;display:flex;gap:8px;align-items:center">
-      <span style="font-size:12.5px;color:var(--ink-3)">이 목록</span>
       <span style="font-size:12.5px;font-weight:600;background:#E6F1FB;color:#0C447C;border-radius:6px;padding:3px 10px">CHESS ${countChessAce(rows).chess}</span>
       <span style="font-size:12.5px;font-weight:600;background:#E1F5EE;color:#085041;border-radius:6px;padding:3px 10px">ACE ${countChessAce(rows).ace}</span>
       <span style="font-size:12.5px;color:var(--ink-3)">· 합 ${rows.length}</span>
