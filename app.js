@@ -4667,34 +4667,46 @@ function startOpenLogModal(){
     const el2=r.returnedAt?Math.round((new Date(r.returnedAt)-new Date(r.leftAt))/1000):null;
     const over=el2!=null&&el2>r.limitSec;
     const k=r.kind==='exam'?'시험':'외출';
-    return `<tr><td>${k}</td><td style="font-weight:700">${esc(r.name)}</td><td>${esc(r.cls||'—')}</td><td>${esc(r.teacher||'—')}</td>
-      <td class="num">${startHM(r.leftAt)}</td><td class="num">${r.returnedAt?startHM(r.returnedAt):'—'}</td>
+    const kc=r.kind==='exam'?'#185FA5':'#0F6E56';
+    return `<tr>
+      <td><span style="font-size:11px;font-weight:800;color:${kc}">${k}</span></td>
+      <td style="font-weight:700">${esc(r.name)}</td>
+      <td style="color:var(--ink-2)">${esc(r.cls||'—')}</td>
+      <td style="color:var(--ink-2)">${esc(r.teacher||'—')}</td>
+      <td class="num">${startHM(r.leftAt)}</td>
+      <td class="num">${r.returnedAt?startHM(r.returnedAt):'—'}</td>
       <td class="num">${el2!=null?startDur(el2):'—'}</td>
       <td style="font-weight:700;color:${over?'var(--neg)':'var(--pos)'}">${over?'초과':'정상'}</td>
-      <td class="cc"><button class="btn sm" style="color:var(--neg)" onclick="startDeleteLog('${r.id}')">삭제</button></td></tr>`;
-  }).join('') : `<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--ink-3)">기록이 없습니다</td></tr>`;
- 
+      <td class="cc"><button class="btn sm" style="color:var(--neg)" onclick="startDeleteLog('${r.id}')">삭제</button></td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--ink-3)">이 날짜의 기록이 없습니다</td></tr>`;
+
   openModal(`
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-      <h3 style="font-size:18px;font-weight:800">기록 <span style="color:var(--ink-3);font-weight:500;font-size:15px">${rows.length}명</span></h3>
-      <div style="display:flex;gap:10px;align-items:center">
-        <input type="date" id="stDate" value="${startState.viewDate}" class="st-inp" style="height:36px">
-        <button class="btn sm" id="stCsvBtn">CSV 내려받기</button>
+    <div class="modal-head">
+      <div>
+        <h3>STaRT 기록</h3>
+        <p style="font-size:12.5px;color:var(--ink-3);margin-top:2px">${startState.viewDate} · 총 ${rows.length}명</p>
       </div>
+      <button class="modal-x" onclick="closeModal()">×</button>
     </div>
-    <table class="grid" style="width:100%">
-      <thead><tr><th>구분</th><th>이름</th><th>반</th><th>담임</th><th>시작</th><th>복귀</th><th>소요</th><th>결과</th><th></th></tr></thead>
-      <tbody>${body}</tbody>
-    </table>`, {wide:true});
- 
+    <div class="modal-body">
+      <div style="display:flex;gap:10px;align-items:center;justify-content:flex-end;margin-bottom:14px">
+        <input type="date" id="stDate" value="${startState.viewDate}" class="st-inp" style="height:36px">
+        <button class="btn sm" id="stCsvBtn">📥 CSV 내려받기</button>
+      </div>
+      <table class="grid" style="width:100%">
+        <thead><tr>
+          <th>구분</th><th>이름</th><th>반</th><th>담임</th><th>시작</th><th>복귀</th><th>소요</th><th>결과</th><th></th>
+        </tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>`);
+
+  const mb=document.getElementById('modalBox');
+  if(mb){ mb.style.maxWidth='min(1080px,94vw)'; mb.style.width='min(1080px,94vw)'; }
+
   const d=el('stDate'); if(d) d.onchange=()=>{ startState.viewDate=d.value; startLoadSessions(startState.viewDate).then(()=>startOpenLogModal()); };
   const c=el('stCsvBtn'); if(c) c.onclick=startDownloadCSV;
- 
-  // 팝업을 넓게 강제 (JLS 모달이 좁을 경우 대비)
-  setTimeout(()=>{
-    const mb=document.getElementById('modalBox');
-    if(mb){ mb.style.maxWidth='min(1100px,94vw)'; mb.style.width='min(1100px,94vw)'; }
-  },0);
 }
  
 function startInjectStyles(){
