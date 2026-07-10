@@ -1927,7 +1927,7 @@ function closingTable(groups, months, firstColLabel, totalRecs, opts={}){
   const caHead = showCA ? `<th class="cc" rowspan="2">구분</th>` : '';
   const caFootCell = showCA ? `<td class="cc"></td>` : '';
  
-  return `<div class="table-wrap"><div class="table-scroll">
+ return `<div class="table-wrap closing-wrap"><div class="table-scroll">
     <table class="rank-table closing-table${showCA?' closing-ca':''}">
       <thead>
         <tr><th class="cc" rowspan="2">#</th><th class="cc" rowspan="2">${firstColLabel}</th>${caHead}${monthHeads}
