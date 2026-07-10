@@ -906,7 +906,8 @@ function buildShell(){
 
       <div class="sb-sect">설정</div>
       <div class="sb-item" data-nav="teachers">${I.teach}<span>선생님 계정</span></div>
-      <div class="sb-item" data-nav="data">${I.data}<span>데이터관리</span></div>`;
+<div class="sb-item" data-nav="data">${I.data}<span>데이터관리</span></div>`;
+  }
   nav.querySelectorAll('[data-nav]').forEach(it=>{
     it.onclick = ()=> go(it.dataset.nav);
   });
