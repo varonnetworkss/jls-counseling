@@ -892,14 +892,21 @@ function buildShell(){
     nav.innerHTML = `
       <div class="sb-sect">분원</div>
       <div class="sb-item" data-nav="branch">${I.dash}<span>Dashboard</span></div>
+
+      <div class="sb-sect">현황</div>
       <div class="sb-item" data-nav="roster">${I.roster}<span>신규·퇴원 명단</span></div>
       <div class="sb-item" data-nav="closing">${I.closing}<span>인원마감표</span></div>
+
+      <div class="sb-sect">학생</div>
       <div class="sb-item" data-nav="students">${I.stu}<span>학생관리</span></div>
-      <div class="sb-item" data-nav="teachers">${I.teach}<span>선생님 계정</span></div>
-     <div class="sb-item" data-nav="segments-edit">${I.seg}<span>세그먼트 공지</span></div>
       <div class="sb-item" data-nav="start">${I.stu}<span>STaRT 관리</span></div>
+
+      <div class="sb-sect">상담</div>
+      <div class="sb-item" data-nav="segments-edit">${I.seg}<span>세그먼트 공지</span></div>
+
+      <div class="sb-sect">설정</div>
+      <div class="sb-item" data-nav="teachers">${I.teach}<span>선생님 계정</span></div>
       <div class="sb-item" data-nav="data">${I.data}<span>데이터관리</span></div>`;
-  }
   nav.querySelectorAll('[data-nav]').forEach(it=>{
     it.onclick = ()=> go(it.dataset.nav);
   });
