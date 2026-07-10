@@ -709,3 +709,5 @@ body.wide-page #content{ max-width:1400px !important; }
 .wd-inline-memo{width:100%;padding:5px 8px;border:1px solid transparent;border-radius:6px;background:transparent;font-family:inherit;font-size:12px;color:var(--ink-3)}
 .wd-inline-memo:hover{background:var(--surface-2);border-color:var(--line)}
 .wd-inline-memo:focus{outline:none;background:var(--surface-2);border-color:var(--brand,#7C5CFF);color:var(--ink-1)}
+.kpi-ca{display:flex;flex-direction:column;align-items:flex-start;gap:4px}
+.kpi-ca > span{width:fit-content}
