@@ -1830,7 +1830,8 @@ function renderClosingHub(){
 }
 
 function closingTable(groups, months, firstColLabel, totalRecs, opts={}){
-  const showCA = opts.showCA !== false;   // 기본 true (강사별). 끄려면 {showCA:false}
+  const showCA = opts.showCA === true;          // 각 행마다 CHESS/ACE (강사별)
+  const showCAFoot = opts.showCAFoot !== false; // 맨 밑 합계 CHESS/ACE (기본 켜짐)  // 기본 true (강사별). 끄려면 {showCA:false}
   const monthNames = months.map(m=>m+'월');
   const COLSPAN_MONTH = 6;
  
@@ -1954,7 +1955,7 @@ function closingTable(groups, months, firstColLabel, totalRecs, opts={}){
           <td class="num cc" style="font-weight:800;color:${totR.totTransfer?'var(--warn)':'inherit'}">${totR.totTransfer}</td>
           <td class="num cc" style="font-weight:800">${totR.avgRate.toFixed(1)}%</td>
         </tr>
-        ${showCA?`
+        ${showCAFoot?`
         <tr class="closing-total clos-ca">
           <td class="cc clos-catag clos-chess">CHESS</td>
           ${footCellsSimple(chessTotRecs)}

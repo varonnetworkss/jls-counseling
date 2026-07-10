@@ -667,3 +667,34 @@ table.rank-table tbody tr:last-child td{border-bottom:none}
   background:#F3EFFB !important;
 }
 body.wide-page #content{ max-width:1400px !important; }
+/* 인원마감표 하단 합계 영역 */
+.closing-table tfoot{
+  border-top:2px solid #d9cdee;
+}
+.closing-table tfoot .closing-total > td{
+  background:#faf8fd;
+  padding-top:11px;
+  padding-bottom:11px;
+}
+/* 합계 행 강조 */
+.closing-table tfoot tr:first-child > td{
+  font-weight:800;
+  background:#f4f0fb;
+}
+/* CHESS/ACE 행은 살짝 연하게 */
+.closing-table tfoot .clos-ca > td{
+  font-size:12px;
+  color:var(--ink-2);
+  padding-top:9px;
+  padding-bottom:9px;
+}
+/* 라벨 칩 다듬기 */
+.closing-table tfoot .clos-catag{
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:.3px;
+  border-radius:6px;
+}
+/* 맨 아래 모서리 둥글게 */
+.closing-table tfoot tr:last-child > td:first-child{ border-bottom-left-radius:8px; }
+.closing-table tfoot tr:last-child > td:last-child{ border-bottom-right-radius:8px; }
