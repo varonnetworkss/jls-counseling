@@ -668,3 +668,21 @@ table.rank-table tbody tr:last-child td{border-bottom:none}
 .table-wrap:has(> .table-scroll > .closing-table){
   overflow:visible;
 }
+/* 인원마감표 — 표 영역 안에서 스크롤 + 헤더 고정 */
+.closing-wrap{ overflow:visible !important; }
+.closing-wrap .table-scroll{
+  overflow:auto;
+  max-height:70vh;      /* 화면 높이의 70%까지만, 넘으면 표 안에서 스크롤 */
+}
+
+.closing-table thead th{
+  position:sticky;
+  z-index:5;
+  background:var(--surface-2);
+}
+.closing-table thead tr:first-child th{ top:0; }
+.closing-table thead tr:nth-child(2) th{ top:34px; }
+
+/* hover */
+.closing-table tbody tr:hover > td{ background:var(--surface-2) !important; }
+.closing-table tfoot tr:hover > td{ background:var(--surface-2) !important; }
