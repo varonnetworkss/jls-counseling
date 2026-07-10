@@ -1832,6 +1832,7 @@ function renderClosingHub(){
 function closingTable(groups, months, firstColLabel, totalRecs, opts={}){
   const showCA = opts.showCA === true;          // 각 행마다 CHESS/ACE (강사별)
   const showCAFoot = opts.showCAFoot !== false; // 맨 밑 합계 CHESS/ACE (기본 켜짐)  // 기본 true (강사별). 끄려면 {showCA:false}
+  const caCol = showCA || showCAFoot;   // 구분 열을 만들지 여부
   const monthNames = months.map(m=>m+'월');
   const COLSPAN_MONTH = 6;
  
@@ -1871,7 +1872,7 @@ function closingTable(groups, months, firstColLabel, totalRecs, opts={}){
     const totalRow = `<tr class="clos-main">
       <td class="cc" rowspan="${rowspan}">${i+1}</td>
       <td class="cc" rowspan="${rowspan}"><span class="nm">${esc(g.name)}</span></td>
-      ${showCA?`<td class="cc clos-catag clos-sum">합계</td>`:''}
+     ${showCA?`<td class="cc clos-catag clos-sum">합계</td>`:(caCol?`<td class="cc"></td>`:'')}
      ${monthCells}
       <td class="num cc" style="font-weight:700">${r.totNew||'-'}</td>
       <td class="num cc" style="font-weight:700;color:${r.totTransferIn?'var(--pos)':'inherit'}">${r.totTransferIn||'-'}</td>
@@ -1932,7 +1933,7 @@ function closingTable(groups, months, firstColLabel, totalRecs, opts={}){
  
   const monthHeads = monthNames.map(mn=>`<th class="cc" colspan="6">${mn}</th>`).join('');
   const subHeads = months.map(()=>`<th class="cc">월초</th><th class="cc">신규</th><th class="cc">전입</th><th class="cc">퇴원</th><th class="cc">전출</th><th class="cc">퇴원율</th>`).join('');
-  const caHead = showCA ? `<th class="cc" rowspan="2">구분</th>` : '';
+  const caHead = caCol ? `<th class="cc" rowspan="2">구분</th>` : '';
   const caFootCell = showCA ? `<td class="cc"></td>` : '';
  
  return `<div class="table-wrap closing-wrap"><div class="table-scroll">
@@ -1943,11 +1944,10 @@ function closingTable(groups, months, firstColLabel, totalRecs, opts={}){
         <tr>${subHeads}<th class="cc">총신규</th><th class="cc">총전입</th><th class="cc">총퇴원</th><th class="cc">총전출</th><th class="cc">평균퇴원율</th></tr>
       </thead>
       <tbody>${bodyRows}</tbody>
-<tfoot>
-        <tr class="closing-total">
-          <td class="cc" ${showCA?'rowspan="3"':''}></td>
-          <td class="cc nm" ${showCA?'rowspan="3"':''}>합계</td>
-          ${showCA?`<td class="cc clos-catag clos-sum">합계</td>`:''}
+<tr class="closing-total">
+          <td class="cc" ${caCol?'rowspan="3"':''}></td>
+          <td class="cc nm" ${caCol?'rowspan="3"':''}>합계</td>
+          ${caCol?`<td class="cc clos-catag clos-sum">합계</td>`:''}
           ${totalCells}
           <td class="num cc" style="font-weight:800">${totR.totNew}</td>
           <td class="num cc" style="font-weight:800;color:${totR.totTransferIn?'var(--pos)':'inherit'}">${totR.totTransferIn}</td>
