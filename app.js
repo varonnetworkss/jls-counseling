@@ -1757,7 +1757,7 @@ function renderRosterDetail(branchId){
   }
 
  const c = rosterCount(branchId, semId);
-  const isInTab = (tab==='new' || tab==='transferIn');
+const isInTab = (tab==='new' || tab==='transferIn' || tab==='transferOut');
   let rows = rosterRows(branchId, semId, tab);
 
   // 담임 목록 (필터 드롭다운용)
