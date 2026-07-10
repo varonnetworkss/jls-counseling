@@ -390,9 +390,14 @@ function stageTimingCheck(type, dateStr, semId, enrollDate){
   if(stageIdx==null) return 'ok';
   const slot = months.indexOf(cMonth);             // 상담월이 이 학기의 몇 번째 달인지
   if(slot===-1) return 'prev';                     // 학기 3개월에 없음 → 이전학기
-  const diff = stageIdx - slot;                    // 회차정상위치 - 실제상담위치
+const diff = stageIdx - slot;                    // 회차정상위치 - 실제상담위치
   if(diff <= 0) return 'ok';
-  if(diff === 1) return 'mistag';
+  if(diff === 1){
+    // 월말(25일 이후)에 다음 달 회차를 미리 한 경우는 정상으로 인정
+    const day = parseInt(m[3],10);
+    if(day >= 25) return 'ok';
+    return 'mistag';
+  }
   return 'prev';
 }
 /* 입학일(enrollDate)에서 월 추출. 없으면 null(=학기초부터 다닌 학생) */
