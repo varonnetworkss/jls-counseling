@@ -628,16 +628,23 @@ table.rank-table tbody tr:last-child td{border-bottom:none}
 .clos-chess{color:#185FA5;background:#EEF4FC !important}
 .clos-ace{color:#0F6E56;background:#EAF6F1 !important}
 .closing-ca tbody tr.clos-main td{border-top:2px solid #d9cdee}
-/* 인원마감표 세로 구분선 */
-.closing-table th,
-.closing-table td{
+/* 인원마감표 세로 구분선 — 데이터 칸에만 */
+.closing-table tbody td,
+.closing-table tfoot td{
   border-right:1px solid var(--line);
 }
-.closing-table th:last-child,
-.closing-table td:last-child{
+/* 앞쪽 3칸(#, 강사명, 구분)은 세로선 없이 */
+.closing-table tbody td:nth-child(-n+3),
+.closing-table tfoot td:nth-child(-n+3){
   border-right:none;
 }
-/* 월 블록 경계는 조금 더 진하게 */
-.closing-table thead tr:first-child th{
-  border-right:1.5px solid #d9cdee;
+/* 두 번째 헤더줄(월초·신규·전입…)에만 세로선 */
+.closing-table thead tr:nth-child(2) th{
+  border-right:1px solid var(--line);
+}
+/* 맨 오른쪽 끝은 선 없이 */
+.closing-table tbody td:last-child,
+.closing-table tfoot td:last-child,
+.closing-table thead tr:nth-child(2) th:last-child{
+  border-right:none;
 }
