@@ -2126,17 +2126,25 @@ return `<tr>
   const monthTr = data.rows.reduce((a,c)=>a+(c.trToday||0),0);
   const monthNew = data.rows.reduce((a,c)=>a+c.newToday,0);
   const monthRate = data.startCount>0 ? (monthWd/(data.startCount+monthNew)*100) : 0;
-
+// 이달 전입 + CHESS/ACE 집계
+  const monthTiRecs = recs.filter(r=> r.transferIn && enrollMonth(r)===month );
+  const monthTi = monthTiRecs.length;
+  const monthNewRecs = recs.filter(r=> (r.origin==='new'||r.origin==='return') && !r.transferIn && enrollMonth(r)===month );
+  const monthWdRecs  = recs.filter(r=> withdrawMonth(r)===month && !r.transfer );
+  const monthTrRecs  = recs.filter(r=> withdrawMonth(r)===month && r.transfer );
+  const startRecs    = recs.filter(r=> (enrollMonth(r)==null || enrollMonth(r)<month) && (withdrawMonth(r)==null || withdrawMonth(r)>=month) );
+  const endRecs      = recs.filter(r=> (enrollMonth(r)==null || enrollMonth(r)<=month) && (withdrawMonth(r)==null || withdrawMonth(r)>month) );
   let html = headHtml + `
     <div class="sort-bar" style="margin-bottom:14px">${monthBtns}</div>
-    <div class="kpi-row c5">
-      ${kpiCard('월초 인원', data.startCount, {unit:'명'})}
-      ${kpiCard('이달 신입(누계)', monthNew, {unit:'명', accent:true})}
-      ${kpiCard('이달 퇴원(누계)', monthWd, {unit:'명'})}
-      ${kpiCard('이달 전출(누계)', monthTr, {unit:'명'})}
-      ${kpiCard('말일 현원', data.endCount, {unit:'명'})}
+<div class="kpi-row c6">
+      ${kpiCard('월초 인원', data.startCount, {unit:'명', ca:countChessAce(startRecs)})}
+      ${kpiCard('이달 신입(누계)', monthNew, {unit:'명', accent:true, ca:countChessAce(monthNewRecs)})}
+      ${kpiCard('이달 전입(누계)', monthTi, {unit:'명', ca:countChessAce(monthTiRecs)})}
+      ${kpiCard('이달 퇴원(누계)', monthWd, {unit:'명', ca:countChessAce(monthWdRecs)})}
+      ${kpiCard('이달 전출(누계)', monthTr, {unit:'명', ca:countChessAce(monthTrRecs)})}
+      ${kpiCard('말일 현원', data.endCount, {unit:'명', ca:countChessAce(endRecs)})}
     </div>
-    <div class="table-wrap"><div class="table-scroll">
+  <div class="table-wrap closing-wrap"><div class="table-scroll">
       <table class="rank-table closing-table">
         <thead><tr>
           <th class="cc">날짜</th><th class="cc">요일</th>
