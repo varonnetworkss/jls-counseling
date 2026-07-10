@@ -672,3 +672,4 @@ table.rank-table tbody tr:last-child td{border-bottom:none}
 .closing-table tfoot tr:hover > td.clos-ace{
   background:#F3EFFB !important;
 }
+body.wide-page #content{ max-width:1400px !important; }
