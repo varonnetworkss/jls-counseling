@@ -1127,7 +1127,8 @@ tot.start+=hc.start; tot.newCnt+=hc.newCnt; tot.transferIn+=hc.transferIn; tot.w
         <div>
           <div class="card-name">${esc(b.name)}
             ${b.id===bestId?'<span class="tag-best">최고</span>':b.id===worstId?'<span class="tag-worst">최저</span>':''}</div>
-          <div class="card-sub">신규 <b style="color:var(--brand)">${hc.newCnt}</b> · 퇴원 <b style="color:${wrColor}">${hc.withdraw}</b> <span style="color:${wrColor}">(${withdrawRate}%)</span> · 상담률 <b style="color:${hasData?rateColor(rates.totalRate):'var(--ink-3)'}">${hasData?rates.totalRate+'%':'–'}</b></div>
+        <div class="card-sub">신규 <b style="color:var(--brand)">${hc.newCnt}</b> · 퇴원 <b style="color:${wrColor}">${hc.withdraw}</b> <span style="color:${wrColor}">(${withdrawRate}%)</span> · 상담률 <b style="color:${hasData?rateColor(rates.totalRate):'var(--ink-3)'}">${hasData?rates.totalRate+'%':'–'}</b></div>
+          <div class="card-ca"><span class="ca-chess">CHESS ${hc.ca.active.chess}</span><span class="ca-ace">ACE ${hc.ca.active.ace}</span></div>
         </div>
         <div class="card-headcount">
           <div class="hc-num num">${hc.active}</div>
@@ -1138,10 +1139,6 @@ tot.start+=hc.start; tot.newCnt+=hc.newCnt; tot.transferIn+=hc.transferIn; tot.w
         <div class="mini-stat"><div class="v num">${hc.start}</div><div class="l">학기초</div></div>
         <div class="mini-stat"><div class="v num" style="color:var(--brand)">${hc.newCnt}</div><div class="l">신규</div></div>
         <div class="mini-stat"><div class="v num" style="color:${hc.withdraw>0?'var(--neg)':'var(--ink-2)'}">${hc.withdraw}</div><div class="l">퇴원</div></div>
-      </div>
-      <div class="kpi-ca" style="margin:8px 0 2px">
-        <span class="ca-chess">CHESS ${hc.ca.active.chess}</span>
-        <span class="ca-ace">ACE ${hc.ca.active.ace}</span>
       </div>
       ${hasData ? stageBars(rates) : `<div style="color:var(--ink-3);font-size:12.5px;padding:8px 0">아직 업로드된 데이터가 없습니다</div>`}
       <div class="card-foot">
