@@ -174,8 +174,8 @@ const TABLES = [
     fromRow:r=>({id:r.id,name:r.name}) },
   { key:'students',           table:'students',             toRow:s=>({id:s.id,code:s.code,name:s.name,school:s.school,grade:s.grade}),
     fromRow:r=>({id:r.id,code:r.code,name:r.name,school:r.school,grade:r.grade}) },
-{ key:'semesterRecords',    table:'semester_records',     toRow:r=>({id:r.id,student_id:r.studentId,branch_id:r.branchId,semester_id:r.semesterId,class_name:r.className,class_label:r.classLabel,teacher:r.teacher,note:r.note,target_type:r.targetType,status:r.status,origin:r.origin,enroll_date:r.enrollDate,withdraw_date:r.withdrawDate,transfer:!!r.transfer,transfer_in:!!r.transferIn,transfer_to:r.transferTo||null,kind:r.kind||'regular',withdraw_reason:r.withdrawReason||null}),
-    fromRow:r=>({id:r.id,studentId:r.student_id,branchId:r.branch_id,semesterId:r.semester_id,className:r.class_name,classLabel:r.class_label,teacher:r.teacher,note:r.note,targetType:r.target_type,status:r.status,origin:r.origin,enrollDate:r.enroll_date,withdrawDate:r.withdraw_date,transfer:!!r.transfer,transferIn:!!r.transfer_in,transferTo:r.transfer_to,kind:r.kind||'regular',withdrawReason:r.withdraw_reason||null}) },
+{ key:'semesterRecords',    table:'semester_records',     toRow:r=>({id:r.id,student_id:r.studentId,branch_id:r.branchId,semester_id:r.semesterId,class_name:r.className,class_label:r.classLabel,teacher:r.teacher,note:r.note,target_type:r.targetType,status:r.status,origin:r.origin,enroll_date:r.enrollDate,withdraw_date:r.withdrawDate,transfer:!!r.transfer,transfer_in:!!r.transferIn,transfer_to:r.transferTo||null,kind:r.kind||'regular',withdraw_reason:r.withdrawReason||null,withdraw_memo:r.withdrawMemo||null}),
+    fromRow:r=>({id:r.id,studentId:r.student_id,branchId:r.branch_id,semesterId:r.semester_id,className:r.class_name,classLabel:r.class_label,teacher:r.teacher,note:r.note,targetType:r.target_type,status:r.status,origin:r.origin,enrollDate:r.enroll_date,withdrawDate:r.withdraw_date,transfer:!!r.transfer,transferIn:!!r.transfer_in,transferTo:r.transfer_to,kind:r.kind||'regular',withdrawReason:r.withdraw_reason||null,withdrawMemo:r.withdraw_memo||null}) },
   { key:'counselingHistories',table:'counseling_histories', toRow:c=>({id:c.id,student_id:c.studentId,branch_id:c.branchId,semester_id:c.semesterId,date:c.date,type:c.type,content:c.content,counselor:c.counselor,batch_id:c.batchId,mistag:!!c.mistag}),
     fromRow:r=>({id:r.id,studentId:r.student_id,branchId:r.branch_id,semesterId:r.semester_id,date:r.date,type:r.type,content:r.content,counselor:r.counselor,batchId:r.batch_id,mistag:!!r.mistag}) },
   { key:'studentMovements',   table:'student_movements',    toRow:m=>({id:m.id,student_id:m.studentId,branch_id:m.branchId,semester_id:m.semesterId,type:m.type,date:m.date,memo:m.memo}),
@@ -232,6 +232,17 @@ async function loadDB(){
       r.classLabel = classLabel(r.classLabel) || r.classLabel;
     }
   });
+ // 기존 퇴원생 보정: studentMovements.memo → rec.withdrawMemo 로 1회 이관
+  (db.semesterRecords||[]).forEach(r=>{
+    if(r.status!=='withdraw') return;
+    if(r.withdrawMemo!=null) return;
+    const mv = (db.studentMovements||[]).find(m=>m.studentId===r.studentId && m.branchId===r.branchId && m.semesterId===r.semesterId && m.type==='withdraw');
+    let memo = (mv && mv.memo) || '';
+    memo = memo.replace(/^\[[^\]]*\]\s*/, '').trim();   // [전출→…] / [사유] 접두사 제거
+    if(memo==='퇴원 처리') memo='';
+    r.withdrawMemo = memo;
+  });
+
   // 학기 자동 보강 (현재+직전 학기). 새로 추가된 학기는 서버에도 저장.
   ensureSemesters();
   dbSnapshot = JSON.parse(JSON.stringify(db));  // 기준 스냅샷
@@ -1657,7 +1668,8 @@ function rosterRows(branchId, semId, tab){
 rows.push({
       name:s.name, code:s.code, school:s.school||'', grade:s.grade||'',
       classLabel:r.classLabel||r.className||'-', className:r.className||'', teacher:r.teacher||'-',
-      date, memo:(mv&&mv.memo)||'',
+date, memo:(mv&&mv.memo)||'',
+      recId:r.id, withdrawReason:r.withdrawReason||'', withdrawMemo:r.withdrawMemo||'',
     });
   });
   rows.sort((a,b)=> (b.date||'').localeCompare(a.date||''));
@@ -1727,7 +1739,8 @@ function renderRosterDetail(branchId){
     crumbs([{label:'신규·퇴원 명단'}]);
   }
 
-  const c = rosterCount(branchId, semId);
+ const c = rosterCount(branchId, semId);
+  const isInTab = (tab==='new' || tab==='transferIn');
   let rows = rosterRows(branchId, semId, tab);
 
   // 담임 목록 (필터 드롭다운용)
@@ -1772,11 +1785,25 @@ function renderRosterDetail(branchId){
       <table class="rank-table" id="rosterTable">
         <thead><tr>
           <th>학생명</th><th>회원코드</th><th>반</th><th>담임</th>
-          <th>학교/학년</th><th>${(tab==='new'||tab==='transferIn')?'입학일':'퇴원일'}</th><th>${(tab==='new'||tab==='transferIn')?'메모':'사유'}</th>
+          <th>학교/학년</th><th>${isInTab?'입학일':'퇴원일'}</th>
+          ${isInTab?'<th>메모</th>':'<th style="width:130px">사유</th><th style="min-width:200px">메모</th>'}
         </tr></thead>
         <tbody>
         ${rows.map(r=>{
           const memoShown = (r.memo && r.memo!=='수동 등록' && r.memo!=='퇴원 처리') ? r.memo : '';
+          const tail = isInTab
+            ? `<td style="color:var(--ink-3);font-size:12px">${esc(memoShown)}</td>`
+            : `<td>
+                 <select class="wd-inline-sel" onchange="setWdReason('${r.recId}', this.value)">
+                   <option value="">미분류</option>
+                   ${WITHDRAW_REASONS.map(w=>`<option value="${w.code}" ${r.withdrawReason===w.code?'selected':''}>${esc(w.label)}</option>`).join('')}
+                 </select>
+               </td>
+               <td>
+                 <input class="wd-inline-memo" value="${esc(r.withdrawMemo)}" placeholder="메모"
+                   onblur="setWdMemo('${r.recId}', this.value)"
+                   onkeydown="if(event.key==='Enter')this.blur()">
+               </td>`;
           return `<tr data-name="${esc(r.name)}" data-code="${esc(r.code)}">
           <td class="nm">${esc(r.name)}</td>
           <td><span class="code-chip">${esc(r.code)}</span></td>
@@ -1784,7 +1811,7 @@ function renderRosterDetail(branchId){
           <td>${esc(r.teacher)}</td>
           <td style="color:var(--ink-3);font-size:12px">${esc(r.school)} ${esc(r.grade)}${r.grade?'학년':''}</td>
           <td class="num">${esc(r.date)}</td>
-          <td style="color:var(--ink-3);font-size:12px">${esc(memoShown)}</td>
+          ${tail}
         </tr>`;}).join('')}
         </tbody>
       </table>
@@ -1793,6 +1820,21 @@ function renderRosterDetail(branchId){
   }
   el('content').innerHTML = html;
   if(state.rosterQuery) setRosterQuery(state.rosterQuery);
+}
+/* 명단 표에서 퇴원 사유/메모 인라인 수정 — 리렌더 없이 즉시 저장 */
+function setWdReason(recId, code){
+  const rec = db.semesterRecords.find(r=>r.id===recId);
+  if(!rec) return;
+  rec.withdrawReason = code || null;
+  saveDB().then(ok=>{ if(!ok) toast('저장 실패','err'); });
+}
+function setWdMemo(recId, val){
+  const rec = db.semesterRecords.find(r=>r.id===recId);
+  if(!rec) return;
+  const v = (val||'').trim();
+  if((rec.withdrawMemo||'') === v) return;   // 변경 없으면 저장 스킵
+  rec.withdrawMemo = v;
+  saveDB().then(ok=>{ if(!ok) toast('저장 실패','err'); });
 }
 function setRosterTab(tab){ state.rosterTab=tab; state.rosterTeacher=''; state.rosterQuery=''; render(); }
 function setRosterTeacher(v){ state.rosterTeacher=v; render(); }
@@ -3144,9 +3186,10 @@ function withdrawStudent(){
   rec.withdrawDate=wdDate;
   rec.transfer=isTransfer;
   rec.transferTo=toBranchId||null;
-  rec.withdrawReason = isTransfer ? null : reason;
+rec.withdrawReason = isTransfer ? null : reason;
 
   const memo = el('wdMemo').value.trim();
+  rec.withdrawMemo = memo;
   const stu=getStudent(rec.studentId);
   db.studentMovements.push({id:uid('mv'),studentId:rec.studentId,branchId:rec.branchId,semesterId:rec.semesterId,
     type:'withdraw',date:wdDate,
