@@ -1802,7 +1802,7 @@ const isInTab = (tab==='new' || tab==='transferIn' || tab==='transferOut');
       <table class="rank-table" id="rosterTable">
         <thead><tr>
           <th>학생명</th><th>회원코드</th><th>반</th><th>담임</th>
-          <th>학교/학년</th><th>${isInTab?'입학일':'퇴원일'}</th>
+          <th>학교/학년</th><th>${(tab==='new'||tab==='transferIn')?'입학일':'퇴원일'}</th>
           ${isInTab?'<th>메모</th>':'<th style="width:130px">사유</th><th style="min-width:200px">메모</th>'}
         </tr></thead>
         <tbody>
