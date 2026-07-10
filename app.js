@@ -174,8 +174,8 @@ const TABLES = [
     fromRow:r=>({id:r.id,name:r.name}) },
   { key:'students',           table:'students',             toRow:s=>({id:s.id,code:s.code,name:s.name,school:s.school,grade:s.grade}),
     fromRow:r=>({id:r.id,code:r.code,name:r.name,school:r.school,grade:r.grade}) },
-{ key:'semesterRecords',    table:'semester_records',     toRow:r=>({id:r.id,student_id:r.studentId,branch_id:r.branchId,semester_id:r.semesterId,class_name:r.className,class_label:r.classLabel,teacher:r.teacher,note:r.note,target_type:r.targetType,status:r.status,origin:r.origin,enroll_date:r.enrollDate,withdraw_date:r.withdrawDate,transfer:!!r.transfer,transfer_in:!!r.transferIn,transfer_to:r.transferTo||null,kind:r.kind||'regular'}),
-    fromRow:r=>({id:r.id,studentId:r.student_id,branchId:r.branch_id,semesterId:r.semester_id,className:r.class_name,classLabel:r.class_label,teacher:r.teacher,note:r.note,targetType:r.target_type,status:r.status,origin:r.origin,enrollDate:r.enroll_date,withdrawDate:r.withdraw_date,transfer:!!r.transfer,transferIn:!!r.transfer_in,transferTo:r.transfer_to,kind:r.kind||'regular'}) },
+{ key:'semesterRecords',    table:'semester_records',     toRow:r=>({id:r.id,student_id:r.studentId,branch_id:r.branchId,semester_id:r.semesterId,class_name:r.className,class_label:r.classLabel,teacher:r.teacher,note:r.note,target_type:r.targetType,status:r.status,origin:r.origin,enroll_date:r.enrollDate,withdraw_date:r.withdrawDate,transfer:!!r.transfer,transfer_in:!!r.transferIn,transfer_to:r.transferTo||null,kind:r.kind||'regular',withdraw_reason:r.withdrawReason||null}),
+    fromRow:r=>({id:r.id,studentId:r.student_id,branchId:r.branch_id,semesterId:r.semester_id,className:r.class_name,classLabel:r.class_label,teacher:r.teacher,note:r.note,targetType:r.target_type,status:r.status,origin:r.origin,enrollDate:r.enroll_date,withdrawDate:r.withdraw_date,transfer:!!r.transfer,transferIn:!!r.transfer_in,transferTo:r.transfer_to,kind:r.kind||'regular',withdrawReason:r.withdraw_reason||null}) },
   { key:'counselingHistories',table:'counseling_histories', toRow:c=>({id:c.id,student_id:c.studentId,branch_id:c.branchId,semester_id:c.semesterId,date:c.date,type:c.type,content:c.content,counselor:c.counselor,batch_id:c.batchId,mistag:!!c.mistag}),
     fromRow:r=>({id:r.id,studentId:r.student_id,branchId:r.branch_id,semesterId:r.semester_id,date:r.date,type:r.type,content:r.content,counselor:r.counselor,batchId:r.batch_id,mistag:!!r.mistag}) },
   { key:'studentMovements',   table:'student_movements',    toRow:m=>({id:m.id,student_id:m.studentId,branch_id:m.branchId,semester_id:m.semesterId,type:m.type,date:m.date,memo:m.memo}),
@@ -2478,9 +2478,16 @@ function renderStudentManagement(){
         <div id="wdPicked" class="wd-picked" style="display:none"></div>
         <div class="form-row" style="margin:10px 0">
           <div class="field"><label>퇴원일</label><input id="wdDate" type="date" value="${today()}"></div>
-          <div class="field"><label>사유 (선택)</label><input id="wdMemo" placeholder="예: 타지역 이사"></div>
+          <div class="field" id="wdReasonField">
+        <label>퇴원 사유</label>
+        <select id="wdReason" onchange="toggleWdReason()">
+          <option value="">선택하세요</option>
+          ${WITHDRAW_REASONS.map(r=>`<option value="${r.code}">${esc(r.label)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field full"><label>메모 (선택)</label><input id="wdMemo" placeholder="상세 내용을 적어주세요"></div>
         </div>
-        <label class="wd-transfer"><input type="checkbox" id="wdTransfer" onchange="document.getElementById('wdTransferToRow').style.display=this.checked?'flex':'none'"> <span>전출 (다른 분원으로 이동) — 퇴원율에 반영하지 않음</span></label>
+onchange="document.getElementById('wdTransferToRow').style.display=this.checked?'flex':'none'; toggleWdReason()"> <span>전출 (다른 분원으로 이동) — 퇴원율에 반영하지 않음</span></label>
         <div class="form-row" id="wdTransferToRow" style="display:none;margin-top:8px">
           <div class="field full"><label>어느 분원으로 가나요? (본사 전입 대조용)</label>
             <select id="wdTransferTo">
@@ -3114,23 +3121,36 @@ function clearWdPick(){
   el('wdSearch').value='';
   el('wdResults').innerHTML='';
 }
+function toggleWdReason(){
+  const isTransfer = el('wdTransfer') ? el('wdTransfer').checked : false;
+  const f = el('wdReasonField');
+  if(f) f.style.display = isTransfer ? 'none' : '';
+}
 function withdrawStudent(){
   const recId=el('wdSelect').value;
   if(!recId){ toast('학생을 검색해서 선택하세요','err'); return; }
   const rec=db.semesterRecords.find(r=>r.id===recId);
   if(!rec){ toast('학생을 다시 선택하세요','err'); return; }
-const wdDate = el('wdDate').value || today();
+  const wdDate = el('wdDate').value || today();
   const isTransfer = el('wdTransfer') ? el('wdTransfer').checked : false;
   const toBranchId = isTransfer && el('wdTransferTo') ? el('wdTransferTo').value : '';
   if(isTransfer && !toBranchId){ toast('전출 대상 분원을 선택하세요','err'); return; }
+
+  const reason = (!isTransfer && el('wdReason')) ? el('wdReason').value : '';
+  if(!isTransfer && !reason){ toast('퇴원 사유를 선택하세요','err'); return; }
+
   const toBranchName = toBranchId ? (getBranch(toBranchId)?.name||'') : '';
   rec.status='withdraw';
-  rec.withdrawDate=wdDate;   // 레코드에도 퇴원일 저장 (월별 추적용)
-  rec.transfer=isTransfer;   // 전출이면 퇴원율 계산에서 제외
-  rec.transferTo=toBranchId||null;  // 전출이면 도착 분원 id (본사 매칭용)
+  rec.withdrawDate=wdDate;
+  rec.transfer=isTransfer;
+  rec.transferTo=toBranchId||null;
+  rec.withdrawReason = isTransfer ? null : reason;
+
+  const memo = el('wdMemo').value.trim();
   const stu=getStudent(rec.studentId);
   db.studentMovements.push({id:uid('mv'),studentId:rec.studentId,branchId:rec.branchId,semesterId:rec.semesterId,
-    type:'withdraw',date:wdDate,memo:(isTransfer?`[전출→${toBranchName}] `:'')+(el('wdMemo').value.trim()||'퇴원 처리')});
+    type:'withdraw',date:wdDate,
+    memo:(isTransfer?`[전출→${toBranchName}] `:`[${wdReasonLabel(reason)}] `)+(memo||'퇴원 처리')});
   saveDB(); toast(`${stu.name} ${isTransfer?`${toBranchName}로 전출`:'퇴원'} 처리 완료`,'ok'); render();
 }
 
@@ -3647,7 +3667,23 @@ const rates = calcRates(rateRecordsOfTeacher(branchId, semId, teacher), branchId
 /* ============================================================================
    17-4. 분원 — 세그먼트 공지 입력 (회차별 4섹션)
    ============================================================================ */
-const SEG_STAGES = ['MC1','MC2','MC3'];
+const WITHDRAW_REASONS = [
+  { code:'academy',   label:'타학원 이동' },
+  { code:'personal',  label:'개인 사유' },
+  { code:'burden',    label:'학습 부담' },
+  { code:'teacher',   label:'담임 불만' },
+  { code:'peer',      label:'교우 관계' },
+  { code:'schedule',  label:'스케줄' },
+  { code:'moving',    label:'이사' },
+  { code:'graduate',  label:'졸업' },
+  { code:'closed',    label:'폐강' },
+  { code:'other',     label:'기타' },
+];
+function wdReasonLabel(code){
+  const f = WITHDRAW_REASONS.find(r=>r.code===code);
+  return f ? f.label : '';
+}
+   const SEG_STAGES = ['MC1','MC2','MC3'];
 const SEG_SECTIONS = [
   { key:'sec1', label:'중요상담', ph:'그 회차 상담의 핵심 메시지 (예: 몰입 상담 강조, 톤 지침 등)' },
   { key:'sec2', label:'레벨 학습 목표 및 학습내용 안내', ph:'CHESS/ACE 레벨별 학습목표·교재·시험 안내' },
