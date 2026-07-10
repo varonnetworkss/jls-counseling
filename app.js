@@ -908,6 +908,7 @@ function crumbs(items){
    7. 메인 라우팅 — 권한 가드 포함
    ============================================================================ */
 function render(){
+   el('content').style.maxWidth = '';
   if(!session){ showLogin(); return; }
   const { parts } = parseRoute();
   const root = parts[0] || (session.role==='admin'?'admin':'branch');
@@ -2029,6 +2030,7 @@ function renderClosing(branchId){
       월초+신규 = 그 달 시작 인원 + 그 달 신규 · 퇴원율 = 퇴원 ÷ (월초+신규) · 평균퇴원율 = 월별 퇴원율의 평균 · 전출은 퇴원에서 제외됩니다.
     </div>`;
   el('content').innerHTML = html;
+  el('content').style.maxWidth = '1450px';
 }
 
 /* 담임 변경을 반영한 강사별 그룹 생성 (날짜 정확히 쪼개기).
