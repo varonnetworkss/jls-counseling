@@ -3766,7 +3766,7 @@ function renderSegmentEdit(){
   el('content').innerHTML = `
     <div class="page-head">
       <h2>세그먼트 공지</h2>
-      <div class="sub">${esc(b.name)} · ${esc(db.semesters.find(s=>s.id===semId).name)} · 본사에서 받은 세그먼트를 회차별로 입력하면, 나중에 선생님이 학생 상담 시 참고하고 학생별 대본에 녹아듭니다.</div>
+      <div class="sub">${esc(b.name)} · ${esc(db.semesters.find(s=>s.id===semId).name)} · 세그먼트를 회차별로 입력하면, 담임 계정에서 바로 확인할 수 있습니다.
     </div>
     <div class="sort-bar" style="margin-bottom:16px">
       ${SEG_STAGES.map(stageBtn).join('')}
