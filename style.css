@@ -664,3 +664,7 @@ table.rank-table tbody tr:last-child td{border-bottom:none}
 .closing-table tbody tr:hover td{
   background:var(--surface-2);
 }
+/* 인원마감표 헤더 고정 — 부모 overflow 해제 */
+.table-wrap:has(> .table-scroll > .closing-table){
+  overflow:visible;
+}
