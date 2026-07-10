@@ -1054,12 +1054,20 @@ function renderAdminDashboard(){
   crumbs([{label:'통합 대시보드'}]);
 
 // 전체 합산
-  let tot = { start:0, newCnt:0, transferIn:0, withdraw:0, transfer:0, active:0, net:0 };
+ let tot = { start:0, newCnt:0, transferIn:0, withdraw:0, transfer:0, active:0, net:0 };
+  const CA_KEYS = ['start','newCnt','transferIn','withdraw','transfer','active'];
+  const totCa = {};
+  CA_KEYS.forEach(k=>{ totCa[k] = {chess:0, ace:0, total:0}; });
 const cards = db.branches.map(b=>{
     const hc = headcountClean(b.id, semId);
     const rates = calcRates(rateRecordsOf(b.id, semId), b.id, semId);
 tot.start+=hc.start; tot.newCnt+=hc.newCnt; tot.transferIn+=hc.transferIn; tot.withdraw+=hc.withdraw;
     tot.transfer+=hc.transfer; tot.active+=hc.active; tot.net+=hc.net;
+    CA_KEYS.forEach(k=>{
+      totCa[k].chess += hc.ca[k].chess;
+      totCa[k].ace   += hc.ca[k].ace;
+      totCa[k].total += hc.ca[k].total;
+    });
     // 분원 퇴원율 = 퇴원 / (재원+퇴원)
     const wbase = hc.active + hc.withdraw;
     const withdrawRate = wbase>0 ? Math.round(hc.withdraw/wbase*100) : 0;
@@ -1074,13 +1082,13 @@ tot.start+=hc.start; tot.newCnt+=hc.newCnt; tot.transferIn+=hc.transferIn; tot.w
       <div class="sub">6개 분원 통합 현황 · ${esc(db.semesters.find(s=>s.id===semId).name)}</div>
     </div>
 <div class="kpi-row c7">
-      ${kpiCard('전체 학기초 인원', tot.start, {unit:'명'})}
-      ${kpiCard('전체 신규생', tot.newCnt, {unit:'명'})}
-      ${kpiCard('전체 전입', tot.transferIn, {unit:'명'})}
-      ${kpiCard('전체 퇴원생', tot.withdraw, {unit:'명'})}
-      ${kpiCard('전체 전출', tot.transfer, {unit:'명'})}
+     ${kpiCard('전체 학기초 인원', tot.start, {unit:'명', ca:totCa.start})}
+      ${kpiCard('전체 신규생', tot.newCnt, {unit:'명', ca:totCa.newCnt})}
+      ${kpiCard('전체 전입', tot.transferIn, {unit:'명', ca:totCa.transferIn})}
+      ${kpiCard('전체 퇴원생', tot.withdraw, {unit:'명', ca:totCa.withdraw})}
+      ${kpiCard('전체 전출', tot.transfer, {unit:'명', ca:totCa.transfer})}
       ${kpiCard('전체 퇴원율', totWithdrawRate, {unit:'%'})}
-      ${kpiCard('현 재원생', tot.active, {unit:'명', accent:true})}
+      ${kpiCard('현 재원생', tot.active, {unit:'명', accent:true, ca:totCa.active})}
     </div>`+ transferWarnBox(semId) +`
     <div class="sect-head">
       <h3>분원별 현황</h3>
@@ -1130,6 +1138,10 @@ tot.start+=hc.start; tot.newCnt+=hc.newCnt; tot.transferIn+=hc.transferIn; tot.w
         <div class="mini-stat"><div class="v num">${hc.start}</div><div class="l">학기초</div></div>
         <div class="mini-stat"><div class="v num" style="color:var(--brand)">${hc.newCnt}</div><div class="l">신규</div></div>
         <div class="mini-stat"><div class="v num" style="color:${hc.withdraw>0?'var(--neg)':'var(--ink-2)'}">${hc.withdraw}</div><div class="l">퇴원</div></div>
+      </div>
+      <div class="kpi-ca" style="margin:8px 0 2px">
+        <span class="ca-chess">CHESS ${hc.ca.active.chess}</span>
+        <span class="ca-ace">ACE ${hc.ca.active.ace}</span>
       </div>
       ${hasData ? stageBars(rates) : `<div style="color:var(--ink-3);font-size:12.5px;padding:8px 0">아직 업로드된 데이터가 없습니다</div>`}
       <div class="card-foot">
@@ -1807,7 +1819,8 @@ function renderRosterDetail(branchId){
           return `<tr data-name="${esc(r.name)}" data-code="${esc(r.code)}">
           <td class="nm">${esc(r.name)}</td>
           <td><span class="code-chip">${esc(r.code)}</span></td>
-          <td>${esc(r.classLabel)}</td>
+          <td>${esc(r.class
+            Label)}</td>
           <td>${esc(r.teacher)}</td>
           <td style="color:var(--ink-3);font-size:12px">${esc(r.school)} ${esc(r.grade)}${r.grade?'학년':''}</td>
           <td class="num">${esc(r.date)}</td>
