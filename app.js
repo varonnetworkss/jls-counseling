@@ -2891,8 +2891,7 @@ function importRoster(file, branchId, semId){
   if(isPastSemester(semId)){ lockedPastToast(); return; }
   readTable(file, async rows=>{
     if(rows.length<2){ toast('데이터가 없습니다','err'); return; }
-    const header = rows[0].map(h=>String(h).trim());
-    const idx = mapHeader(header, {
+    const HDR = {
       name:['이름','학생명','성명'],
       code:['회원코드','코드','학생코드'],
       school:['학교'],
@@ -2901,8 +2900,14 @@ function importRoster(file, branchId, semId){
       teacher:['담임선생님','담임명','담임','선생님'],
       note:['특이사항','비고','메모'],
       startdate:['반 시작일','반시작일','시작일','등원일','입학일']
-    });
-    if(idx.name<0 || idx.code<0){ toast('이름·회원코드 열을 찾지 못했습니다','err'); return; }
+    };
+    // 맨 위 병합 제목행이 있어도 자동으로 건너뜀 — 최대 3행 탐색
+    let idx = null;
+    for(let i=0; i<Math.min(3, rows.length-1); i++){
+      const cand = mapHeader(rows[i].map(h=>String(h).trim()), HDR);
+      if(cand.name>=0 && cand.code>=0){ idx = cand; rows = rows.slice(i); break; }
+    }
+    if(!idx){ toast('이름·회원코드 열을 찾지 못했습니다','err'); return; }
     let added=0, updated=0, excluded=0, examAdded=0;
     rows.slice(1).forEach(r=>{
       const name=String(r[idx.name]||'').trim();
@@ -2966,8 +2971,7 @@ function importRoster(file, branchId, semId){
 function importHistory(file, branchId, semId){
   readTable(file, async rows=>{
     if(rows.length<2){ toast('데이터가 없습니다','err'); return; }
-    const header = rows[0].map(h=>String(h).trim());
-    const idx = mapHeader(header,{
+    const HDR_MAP = {
       code:['회원코드','코드'],
       name:['이름','학생명'],
       category:['분류','구분'],
@@ -2975,8 +2979,15 @@ function importHistory(file, branchId, semId){
       date:['날짜','상담일','일자'],
       status:['상태'],
       counselor:['상담자','담임','작성자']
-    });
-    if(idx.content<0){ toast('내용 열을 찾지 못했습니다','err'); return; }
+    };
+    // 첫 행이 병합 제목("상담이력")이면 다음 행을 헤더로 사용 — 최대 3행까지 탐색
+    let headRow = -1, idx = null;
+    for(let i=0; i<Math.min(3, rows.length-1); i++){
+      const cand = mapHeader(rows[i].map(h=>String(h).trim()), HDR_MAP);
+      if(cand.content>=0){ headRow = i; idx = cand; break; }
+    }
+    if(headRow<0){ toast('내용 열을 찾지 못했습니다','err'); return; }
+    rows = rows.slice(headRow);
     // 이번 업로드를 하나의 배치로 기록
     const batchId = uid('batch');
     let added=0, dup=0, skip=0, notCounsel=0, prevSem=0, misTagCnt=0;
