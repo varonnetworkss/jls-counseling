@@ -1819,8 +1819,7 @@ function renderRosterDetail(branchId){
           return `<tr data-name="${esc(r.name)}" data-code="${esc(r.code)}">
           <td class="nm">${esc(r.name)}</td>
           <td><span class="code-chip">${esc(r.code)}</span></td>
-          <td>${esc(r.class
-            Label)}</td>
+         <td>${esc(r.classLabel)}</td>
           <td>${esc(r.teacher)}</td>
           <td style="color:var(--ink-3);font-size:12px">${esc(r.school)} ${esc(r.grade)}${r.grade?'학년':''}</td>
           <td class="num">${esc(r.date)}</td>
