@@ -2487,7 +2487,7 @@ function renderStudentManagement(){
       </div>
       <div class="field full"><label>메모 (선택)</label><input id="wdMemo" placeholder="상세 내용을 적어주세요"></div>
         </div>
-onchange="document.getElementById('wdTransferToRow').style.display=this.checked?'flex':'none'; toggleWdReason()"> <span>전출 (다른 분원으로 이동) — 퇴원율에 반영하지 않음</span></label>
+<label class="wd-transfer"><input type="checkbox" id="wdTransfer" onchange="document.getElementById('wdTransferToRow').style.display=this.checked?'flex':'none'; toggleWdReason()"> <span>전출 (다른 분원으로 이동) — 퇴원율에 반영하지 않음</span></label>
         <div class="form-row" id="wdTransferToRow" style="display:none;margin-top:8px">
           <div class="field full"><label>어느 분원으로 가나요? (본사 전입 대조용)</label>
             <select id="wdTransferTo">
