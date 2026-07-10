@@ -481,10 +481,12 @@ const baseNew = monthStart + newThis + tiThis;
     }
     carry = baseNew - wdThis - trThis;
   });
-  const totWithdraw = cells.reduce((a,c)=>a+(c.blank?0:c.withdraw),0);
+ const totWithdraw = cells.reduce((a,c)=>a+(c.blank?0:c.withdraw),0);
   const totTransfer = cells.reduce((a,c)=>a+(c.blank?0:c.transfer),0);
+  const totNew = cells.reduce((a,c)=>a+(c.blank?0:c.newThis),0);
+  const totTransferIn = cells.reduce((a,c)=>a+(c.blank?0:c.transferIn),0);
   const avgRate = rates.length ? rates.reduce((a,c)=>a+c,0)/rates.length : 0;
-  return { cells, totWithdraw, totTransfer, avgRate };
+  return { cells, totWithdraw, totTransfer, totNew, totTransferIn, avgRate };
 }
 /* 일별 집계 — 한 달의 날짜별 인원 추적 (퇴원율 집계표용).
    월초인원 = 이 달 전부터 다니고 이 달엔 아직 안 나간 학생.
@@ -1868,7 +1870,9 @@ function closingTable(groups, months, firstColLabel, totalRecs, opts={}){
       <td class="cc" rowspan="${rowspan}">${i+1}</td>
       <td class="cc" rowspan="${rowspan}"><span class="nm">${esc(g.name)}</span></td>
       ${showCA?`<td class="cc clos-catag clos-sum">합계</td>`:''}
-      ${monthCells}
+     ${monthCells}
+      <td class="num cc" style="font-weight:700">${r.totNew||'-'}</td>
+      <td class="num cc" style="font-weight:700;color:${r.totTransferIn?'var(--pos)':'inherit'}">${r.totTransferIn||'-'}</td>
       <td class="num cc" style="font-weight:700">${r.totWithdraw||'-'}</td>
       <td class="num cc" style="font-weight:700;color:${r.totTransfer?'var(--warn)':'inherit'}">${r.totTransfer||'-'}</td>
       <td class="num cc"><span style="font-weight:700;color:${r.avgRate>=10?'var(--neg)':r.avgRate>=5?'var(--warn)':'var(--brand)'}">${r.avgRate?r.avgRate.toFixed(1)+'%':'-'}</span></td>
@@ -1883,7 +1887,9 @@ function closingTable(groups, months, firstColLabel, totalRecs, opts={}){
     const aR = monthlyClosing(aceRecs, months);
     const caRow = (label, tagCls, recs, mc)=>`<tr class="clos-ca">
       <td class="cc clos-catag ${tagCls}">${label}</td>
-      ${cellsHtmlSimple(recs, ' clos-ca-cell')}
+     ${cellsHtmlSimple(recs, ' clos-ca-cell')}
+      <td class="num cc clos-ca-cell">${mc.totNew||'-'}</td>
+      <td class="num cc clos-ca-cell">${mc.totTransferIn||'-'}</td>
       <td class="num cc clos-ca-cell">${mc.totWithdraw||'-'}</td>
       <td class="num cc clos-ca-cell">${mc.totTransfer||'-'}</td>
       <td class="num cc clos-ca-cell">${mc.avgRate?mc.avgRate.toFixed(1)+'%':'-'}</td>
@@ -1931,20 +1937,41 @@ function closingTable(groups, months, firstColLabel, totalRecs, opts={}){
     <table class="rank-table closing-table${showCA?' closing-ca':''}">
       <thead>
         <tr><th class="cc" rowspan="2">#</th><th class="cc" rowspan="2">${firstColLabel}</th>${caHead}${monthHeads}
-          <th class="cc" colspan="3">학기 계</th></tr>
-        <tr>${subHeads}<th class="cc">총퇴원</th><th class="cc">총전출</th><th class="cc">평균퇴원율</th></tr>
+          <th class="cc" colspan="5">학기 계</th></tr>
+        <tr>${subHeads}<th class="cc">총신규</th><th class="cc">총전입</th><th class="cc">총퇴원</th><th class="cc">총전출</th><th class="cc">평균퇴원율</th></tr>
       </thead>
       <tbody>${bodyRows}</tbody>
 <tfoot>
-        <tr class="closing-total"><td class="cc"></td><td class="cc nm" ${showCA?'rowspan="3"':''}>합계</td>${showCA?`<td class="cc clos-catag clos-sum">합계</td>`:''}${totalCells}
+        <tr class="closing-total">
+          <td class="cc" ${showCA?'rowspan="3"':''}></td>
+          <td class="cc nm" ${showCA?'rowspan="3"':''}>합계</td>
+          ${showCA?`<td class="cc clos-catag clos-sum">합계</td>`:''}
+          ${totalCells}
+          <td class="num cc" style="font-weight:800">${totR.totNew}</td>
+          <td class="num cc" style="font-weight:800;color:${totR.totTransferIn?'var(--pos)':'inherit'}">${totR.totTransferIn}</td>
           <td class="num cc" style="font-weight:800">${totR.totWithdraw}</td>
           <td class="num cc" style="font-weight:800;color:${totR.totTransfer?'var(--warn)':'inherit'}">${totR.totTransfer}</td>
-          <td class="num cc" style="font-weight:800">${totR.avgRate.toFixed(1)}%</td></tr>
+          <td class="num cc" style="font-weight:800">${totR.avgRate.toFixed(1)}%</td>
+        </tr>
         ${showCA?`
-        <tr class="closing-total clos-ca"><td class="cc clos-catag clos-chess">CHESS</td>${footCellsSimple(chessTotRecs)}
-          <td class="num cc">${cTot.totWithdraw||'-'}</td><td class="num cc">${cTot.totTransfer||'-'}</td><td class="num cc">${cTot.avgRate?cTot.avgRate.toFixed(1)+'%':'-'}</td></tr>
-        <tr class="closing-total clos-ca"><td class="cc clos-catag clos-ace">ACE</td>${footCellsSimple(aceTotRecs)}
-          <td class="num cc">${aTot.totWithdraw||'-'}</td><td class="num cc">${aTot.totTransfer||'-'}</td><td class="num cc">${aTot.avgRate?aTot.avgRate.toFixed(1)+'%':'-'}</td></tr>
+        <tr class="closing-total clos-ca">
+          <td class="cc clos-catag clos-chess">CHESS</td>
+          ${footCellsSimple(chessTotRecs)}
+          <td class="num cc">${cTot.totNew||'-'}</td>
+          <td class="num cc">${cTot.totTransferIn||'-'}</td>
+          <td class="num cc">${cTot.totWithdraw||'-'}</td>
+          <td class="num cc">${cTot.totTransfer||'-'}</td>
+          <td class="num cc">${cTot.avgRate?cTot.avgRate.toFixed(1)+'%':'-'}</td>
+        </tr>
+        <tr class="closing-total clos-ca">
+          <td class="cc clos-catag clos-ace">ACE</td>
+          ${footCellsSimple(aceTotRecs)}
+          <td class="num cc">${aTot.totNew||'-'}</td>
+          <td class="num cc">${aTot.totTransferIn||'-'}</td>
+          <td class="num cc">${aTot.totWithdraw||'-'}</td>
+          <td class="num cc">${aTot.totTransfer||'-'}</td>
+          <td class="num cc">${aTot.avgRate?aTot.avgRate.toFixed(1)+'%':'-'}</td>
+        </tr>
         `:''}
       </tfoot>
     </table>
