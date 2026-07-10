@@ -872,6 +872,7 @@ function buildShell(){
     nav.innerHTML = `
       <div class="sb-sect">선생님</div>
       <div class="sb-item" data-nav="myclasses">${I.dash}<span>내 반 현황</span></div>`;
+      <div class="sb-item" data-nav="segments">${I.seg}<span>세그먼트</span></div>
   } else if(session.role==='assistant'){
     nav.innerHTML = `
       <div class="sb-sect">조교</div>
@@ -926,8 +927,9 @@ function render(){
    if(root==='data'||root==='students'||root==='segments-edit'||root==='teachers'||root==='start'||root==='assistants'){ go('admin'); return; }
   }
   // 선생님: 자기 반 관련 화면만 (myclasses / branch teacher·class 상세)
-  if(session.role==='teacher'){
+if(session.role==='teacher'){
     const allowed = (root==='myclasses')
+      || (root==='segments')
       || (root==='branch' && (parts[1]==='teacher' || parts[1]==='class'));
     if(!allowed){ go('myclasses'); return; }
   }
@@ -963,6 +965,7 @@ function render(){
   }
   else if(root==='teachers'){ setActiveNav('teachers'); renderTeacherAccounts(); }
 else if(root==='segments-edit'){ setActiveNav('segments-edit'); renderSegmentEdit(); }
+  else if(root==='segments'){ setActiveNav('segments'); renderSegmentView(); }
   else if(root==='start'){ setActiveNav('start'); renderStart(); }
   else if(root==='myclasses'){ setActiveNav('myclasses'); renderTeacherHome(); }
   else { go(session.role==='admin'?'admin':'branch'); return; }
@@ -3682,6 +3685,43 @@ function renderSegmentEdit(){
             style="width:100%;padding:10px 11px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface-2);font-family:inherit;font-size:13.5px;line-height:1.6;resize:vertical">${esc(seg?seg[sec.key]||'':'')}</textarea>
         </div>`).join('')}
       <button class="btn primary" style="width:100%" onclick="saveSegment()">${stage} 세그먼트 저장</button>
+    </div>`;
+}
+function renderSegmentView(){
+  const branchId = session.branchId;
+  const semId = state.semId;
+  const stage = state.segStage || 'MC1';
+  crumbs([{label:'세그먼트'}]);
+
+  const sem = db.semesters.find(s=>s.id===semId);
+  const seg = (db.segments||[]).find(s=>s.branchId===branchId && s.semesterId===semId && s.stage===stage);
+
+  const stageBtn = (st)=>`<button class="sb-btn ${stage===st?'on':''}" onclick="setSegStage('${st}')">${st}</button>`;
+
+  const body = seg
+    ? SEG_SECTIONS.map((sec,i)=>{
+        const val = (seg[sec.key]||'').trim();
+        return `
+        <div class="seg-block">
+          <div class="seg-label"><span class="seg-num">${i+1}</span>${esc(sec.label)}</div>
+          ${val ? `<div class="seg-readonly">${esc(val)}</div>`
+                : `<div class="seg-empty">내용이 없습니다.</div>`}
+        </div>`;
+      }).join('')
+    : `<div class="seg-empty" style="text-align:center;padding:36px 0">아직 등록된 ${stage} 세그먼트가 없습니다.</div>`;
+
+  el('content').innerHTML = `
+    <div class="page-head">
+      <h2>세그먼트</h2>
+      <div class="sub">${esc(sem?sem.name:'')} · 회차별 상담 가이드입니다. 상담 전 확인해 주세요.</div>
+    </div>
+    <div class="sort-bar" style="margin-bottom:16px">
+      ${SEG_STAGES.map(stageBtn).join('')}
+    </div>
+    <div class="panel">
+      <h3 style="font-size:14.5px;font-weight:700;margin-bottom:4px">${esc(sem?sem.name:'')} ${stage} Segment</h3>
+      <div class="pd" style="margin-bottom:18px">${seg&&seg.updatedAt?`최종 수정: ${esc(seg.updatedAt)}`:'—'}</div>
+      ${body}
     </div>`;
 }
 function setSegStage(st){ state.segStage = st; render(); }
