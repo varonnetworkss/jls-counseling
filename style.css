@@ -628,3 +628,16 @@ table.rank-table tbody tr:last-child td{border-bottom:none}
 .clos-chess{color:#185FA5;background:#EEF4FC !important}
 .clos-ace{color:#0F6E56;background:#EAF6F1 !important}
 .closing-ca tbody tr.clos-main td{border-top:2px solid #d9cdee}
+/* 인원마감표 세로 구분선 */
+.closing-table th,
+.closing-table td{
+  border-right:1px solid var(--line);
+}
+.closing-table th:last-child,
+.closing-table td:last-child{
+  border-right:none;
+}
+/* 월 블록 경계는 조금 더 진하게 */
+.closing-table thead tr:first-child th{
+  border-right:1.5px solid #d9cdee;
+}
