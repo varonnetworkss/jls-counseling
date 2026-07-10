@@ -648,3 +648,19 @@ table.rank-table tbody tr:last-child td{border-bottom:none}
 .closing-table thead tr:nth-child(2) th:last-child{
   border-right:none;
 }
+/* 인원마감표 — 헤더 고정 + hover */
+.closing-table thead th{
+  position:sticky;
+  z-index:5;
+  background:var(--surface-2);
+}
+.closing-table thead tr:first-child th{ top:0; }
+.closing-table thead tr:nth-child(2) th{ top:34px; }
+
+/* 합계(tfoot)에도 hover 효과 */
+.closing-table tfoot tr:hover td{
+  background:var(--surface-2);
+}
+.closing-table tbody tr:hover td{
+  background:var(--surface-2);
+}
