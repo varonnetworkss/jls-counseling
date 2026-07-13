@@ -4786,14 +4786,14 @@ function passStudentStatusRow(s){
   } else {
     scoreLine = `<span style="color:#A99FC4">미응시</span>`;
   }
-  const stu = db.students.find(x=>x.code===s.code);
+ const stu = db.students.find(x=>x.code===s.code);
   const schoolInfo = stu ? `${stu.school||''} ${stu.grade||''}`.trim() : '';
-  return `<div style="display:flex;align-items:center;gap:12px;padding:12px 4px;border-bottom:0.5px solid #EEEBF6">
-    <div style="width:78px;flex:none;font-size:13.5px;font-weight:700;color:#2E2748">${esc(s.name)}</div>
-    <div style="flex:1;font-size:11px;color:#A99FC4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(schoolInfo)}</div>
-    <div style="font-size:12px;flex:none">${scoreLine}</div>
-    ${(s.cat==='fail'||s.cat==='noshow') && passReserveInfo(s.attempts)?`<span style="font-size:10.5px;color:#7C5CD9;background:#F1ECFC;padding:3px 9px;border-radius:6px;white-space:nowrap">예약 ${esc(passReserveInfo(s.attempts))}</span>`:''}
-    <span style="font-size:11.5px;font-weight:700;color:${badge[2]};background:${badge[1]};padding:4px 11px;border-radius:8px;flex:none">${badge[0]}</span>
+  const reserve = (s.cat==='fail'||s.cat==='noshow') ? passReserveInfo(s.attempts) : '';
+  return `<div style="display:grid;grid-template-columns:78px 150px 1fr auto;align-items:center;gap:12px;padding:12px 4px;border-bottom:0.5px solid #EEEBF6">
+    <div style="font-size:13.5px;font-weight:700;color:#2E2748;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.name)}</div>
+    <div style="font-size:11px;color:#A99FC4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(schoolInfo)}</div>
+    <div style="font-size:12px">${scoreLine}${reserve?` <span style="font-size:10.5px;color:#7C5CD9;background:#F1ECFC;padding:3px 8px;border-radius:6px;white-space:nowrap">예약 ${esc(reserve)}</span>`:''}</div>
+    <span style="font-size:11.5px;font-weight:700;color:${badge[2]};background:${badge[1]};padding:4px 11px;border-radius:8px;white-space:nowrap">${badge[0]}</span>
   </div>`;
 }
 /* 여러 gubun 버킷을 하나로 합산 */
