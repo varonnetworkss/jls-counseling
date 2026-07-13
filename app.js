@@ -4485,16 +4485,20 @@ function activeScores(branchId, semId){
   return (db.qappScores||[]).filter(s=>
     s.branchId===branchId && s.semesterId===semId &&
     s.studentCode && !wd.has(s.studentCode) &&
-    validClasses.has(s.classLabel) &&
+    validClasses.has(classKey(s.classLabel)) &&
     validCodes.has(s.studentCode));   // 홈페이지 명단에 있는 학생만
 }
 
 /* 홈페이지 semesterRecords의 className = 큐앱 classLabel. 여기 있는 반만 정규반 */
+function classKey(name){
+  // 맨 끝 "/X" (담당교사 코드) 제거 + 공백 정리해서 매칭 키 생성
+  return String(name||'').replace(/\s+/g,'').replace(/\/[^/]*$/,'');
+}
 function qappValidClasses(branchId, semId){
   const set = new Set();
   (db.semesterRecords||[]).forEach(r=>{
     if(r.branchId===branchId && r.semesterId===semId && r.className){
-      set.add(r.className);
+      set.add(classKey(r.className));
     }
   });
   return set;
