@@ -4767,7 +4767,7 @@ function passTeacherRow(teacher, sortAgg, byGubun){
   const branchId = session.branchId, semId = state.semId;
 
   const classes = [...new Set(activeScores(branchId, semId)
-    .filter(s=> resolveQTeacher(branchId, semId, s.classLabel, s.gubun, s.teacher)===teacher)
+    .filter(s=> normTeacher(resolveQTeacher(branchId, semId, s.classLabel, s.gubun, s.teacher))===teacher)
     .map(s=>s.classLabel))];
 
   const head = `<div onclick="togglePassTeacher('${encodeURIComponent(teacher)}')" style="display:flex;align-items:center;gap:16px;padding:13px 4px;cursor:pointer;${open?'':'border-bottom:0.5px solid #EEEBF6'}">
