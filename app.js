@@ -4584,6 +4584,182 @@ function aggregateScores(branchId, semId, opts={}){
 
   return {result, meta, lessonLabel};
 }
+/* ========================================================================
+   STaRT 시험 통과율 — 화면
+   ======================================================================== */
+function passState(){
+  if(!state.pass) state.pass = {view:'branch', gubun:'', classLabel:''};
+  return state.pass;
+}
+function setPassView(v){ const p=passState(); p.view=v; p.gubun=''; p.classLabel=''; render(); }
+function setPassGubun(g){ const p=passState(); p.gubun=g; p.view='teacher'; render(); }
+function passOpenClass(clsEnc){ const p=passState(); p.classLabel=decodeURIComponent(clsEnc); p.view='lesson'; render(); }
+function passOpenStudents(clsEnc){ const p=passState(); p.classLabel=decodeURIComponent(clsEnc); p.view='student'; render(); }
+
+function passDonut(a, size){
+  const rate = passRate(a);
+  const passPct = a.total?Math.round((a.pass+a.repass)*100/a.total):0;
+  const failPct = a.total?Math.round(a.fail*100/a.total):0;
+  const noPct   = a.total?Math.round(a.noshow*100/a.total):0;
+  const bad = rate < 75;
+  const cPass='#B8A6F0', cFail=bad?'#EE93B0':'#F5B4CB', cNo='#D9D3E8';
+  const track=bad?'#FBEEF3':'#F3F0F9';
+  const center=bad?'#B05478':'#5B4B8A';
+  return `<div style="position:relative;width:${size}px;height:${size}px;flex:none">
+    <svg viewBox="0 0 42 42" style="width:${size}px;height:${size}px;transform:rotate(-90deg)">
+      <circle cx="21" cy="21" r="15.9" fill="none" stroke="${track}" stroke-width="4.5"/>
+      <circle cx="21" cy="21" r="15.9" fill="none" stroke="${cPass}" stroke-width="4.5" stroke-dasharray="${passPct} 100"/>
+      <circle cx="21" cy="21" r="15.9" fill="none" stroke="${cFail}" stroke-width="4.5" stroke-dasharray="${failPct} 100" stroke-dashoffset="-${passPct}"/>
+      <circle cx="21" cy="21" r="15.9" fill="none" stroke="${cNo}" stroke-width="4.5" stroke-dasharray="${noPct} 100" stroke-dashoffset="-${passPct+failPct}"/>
+    </svg>
+    <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+      <span style="font-size:${Math.round(size*0.22)}px;font-weight:700;color:${center};line-height:1">${rate}%</span>
+      ${size>=80?`<span style="font-size:9.5px;color:#A99FC4;margin-top:2px">통과</span>`:''}
+    </div>
+  </div>`;
+}
+
+function passBigCard(gubun, a){
+  const bad = passRate(a) < 75;
+  const border = bad?'#F7DCE6':'#ECE7F5';
+  const pct = v=> a.total?Math.round(v*100/a.total):0;
+  const legend = (label,val,pctv,color,strong)=>`
+    <div style="display:flex;align-items:center;gap:8px;font-size:12px">
+      <span style="width:9px;height:9px;border-radius:50%;background:${color};flex:none"></span>
+      <span style="color:${strong?'#B05478':'#6B5D9E'};flex:1;${strong?'font-weight:700':''}">${label}</span>
+      <span style="color:${strong?'#B05478':'#3D3560'};font-weight:700">${val}</span>
+      <span style="color:#A99FC4;width:34px;text-align:right">${pctv}%</span>
+    </div>`;
+  return `<div onclick="setPassGubun('${gubun}')" style="cursor:pointer;background:var(--surface-2);border:0.5px solid ${border};border-radius:16px;padding:18px 20px;display:flex;align-items:center;gap:20px">
+    ${passDonut(a,104)}
+    <div style="flex:1;min-width:0">
+      <div style="font-size:16px;font-weight:700;color:#3D3560;margin-bottom:1px">${esc(gubun)}</div>
+      <div style="font-size:11px;color:#A99FC4;margin-bottom:13px">총 ${a.total} 시험</div>
+      <div style="display:flex;flex-direction:column;gap:7px">
+        ${legend('통과', a.pass+a.repass, pct(a.pass+a.repass), '#B8A6F0', false)}
+        ${legend('미통과', a.fail, pct(a.fail), bad?'#EE93B0':'#F5B4CB', bad)}
+        ${legend('미응시', a.noshow, pct(a.noshow), '#D9D3E8', false)}
+      </div>
+      ${(a.fail_rv||a.noshow_rv)?`<div style="margin-top:9px;padding-top:9px;border-top:0.5px solid #EEEBF6;font-size:10.5px;color:#A99FC4">예약: 미통과 ${a.fail_rv} · 미응시 ${a.noshow_rv}</div>`:''}
+    </div>
+  </div>`;
+}
+
+function passListRow(label, a, onclick, sub){
+  const bad = passRate(a) < 75;
+  return `<div ${onclick?`onclick="${onclick}"`:''} style="display:flex;align-items:center;gap:16px;padding:13px 4px;border-bottom:0.5px solid #EEEBF6;${onclick?'cursor:pointer':''}">
+    <div style="flex:none">${passDonut(a,52)}</div>
+    <div style="flex:1;min-width:0">
+      <div style="font-size:13.5px;font-weight:700;color:#2E2748">${esc(label)}</div>
+      ${sub?`<div style="font-size:11px;color:#A99FC4;margin-top:1px">${esc(sub)}</div>`:''}
+    </div>
+    <div style="font-size:11.5px;color:${bad?'#B05478':'#8A7CB8'};text-align:right;white-space:nowrap">
+      미통과 <b style="color:${bad?'#993556':'#4B2FB8'}">${a.fail}</b> · 미응시 <b style="color:#4B2FB8">${a.noshow}</b>
+    </div>
+  </div>`;
+}
+
+/* 여러 gubun 버킷을 하나로 합산 */
+function sumAggs(byGubun){
+  const out = emptyAgg();
+  QAPP_GUBUNS.forEach(g=>{
+    const a=byGubun[g]; if(!a) return;
+    out.total+=a.total; out.pass+=a.pass; out.repass+=a.repass;
+    out.fail+=a.fail; out.noshow+=a.noshow; out.fail_rv+=a.fail_rv; out.noshow_rv+=a.noshow_rv;
+  });
+  return out;
+}
+
+function renderPassrate(){
+  const branchId = session.branchId, semId = state.semId;
+  const p = passState();
+  crumbs([{label:'STaRT 시험 통과율'}]);
+  const scoreCount = activeScores(branchId, semId).length;
+
+  const uploadZone = `
+    <label style="display:block;cursor:pointer;margin-bottom:20px">
+      <div style="border:1px dashed var(--line);border-radius:14px;padding:16px 18px;display:flex;align-items:center;justify-content:space-between;background:var(--surface-2)">
+        <div style="display:flex;align-items:center;gap:12px">
+          <span style="font-size:20px">📊</span>
+          <div>
+            <div style="font-size:13.5px;font-weight:700;color:#3D3560">Q앱 성적 엑셀 업로드</div>
+            <div style="font-size:11.5px;color:#A99FC4">날짜순 누적 · 중복 자동 제거 · 퇴원생 자동 제외</div>
+          </div>
+        </div>
+        <div style="font-size:11.5px;color:#A99FC4">현재 ${scoreCount.toLocaleString()}건 누적</div>
+      </div>
+      <input type="file" accept=".xlsx,.xls,.csv" style="display:none"
+        onchange="if(this.files[0]){importQappScores(this.files[0]); this.value='';}">
+    </label>`;
+
+  if(scoreCount===0){
+    el('content').innerHTML = `
+      <div class="page-head"><h2>STaRT 시험 통과율</h2>
+        <div class="sub">Q앱 성적 엑셀을 올리면 시험구분별 통과율을 분석합니다.</div></div>
+      ${uploadZone}
+      ${emptyState('아직 성적 데이터가 없습니다','큐앱에서 성적 조회 엑셀을 다운받아 업로드하세요. 날짜순으로 누적됩니다.')}`;
+    return;
+  }
+
+  const tab = (v,label)=>`<span onclick="setPassView('${v}')" style="font-size:12.5px;padding:6px 14px;border-radius:999px;cursor:pointer;${(p.view===v||(v==='branch'&&p.view==='teacher'))?'background:#7C5CFF;color:#fff':'border:0.5px solid var(--line);color:#6B5D9E'}">${label}</span>`;
+
+  let crumbLine='', body='';
+
+  if(p.view==='branch'){
+    const {result} = aggregateScores(branchId, semId, {groupBy:'branch'});
+    const agg = result['ALL']||{};
+    body = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      ${QAPP_GUBUNS.map(g=> agg[g]&&agg[g].total ? passBigCard(g, agg[g]) : '').join('')}
+    </div>
+    <div style="margin-top:14px;font-size:11.5px;color:#A99FC4;text-align:center">시험구분 카드를 클릭하면 담임별로 볼 수 있습니다.</div>`;
+  }
+  else if(p.view==='teacher'){
+    const {result, meta} = aggregateScores(branchId, semId, {groupBy:'teacher', gubun:p.gubun});
+    const rows = Object.keys(result).map(k=>({k,a:result[k][p.gubun],label:meta[k].label}))
+      .filter(x=>x.a&&x.a.total).sort((x,y)=>passRate(x.a)-passRate(y.a));
+    crumbLine = `<div style="margin-bottom:14px;font-size:12.5px;color:#6B5D9E"><span onclick="setPassView('branch')" style="cursor:pointer;color:#7C5CFF">← 분원 전체</span> · <b>${esc(p.gubun)}</b> · 담임별 (통과율 낮은 순)</div>`;
+    body = `<div style="background:var(--surface-2);border:0.5px solid #ECE7F5;border-radius:16px;padding:6px 18px">
+      ${rows.map(x=>passListRow(x.label,x.a,'','담임')).join('')||'<div style="padding:20px;text-align:center;color:#A99FC4">데이터 없음</div>'}
+    </div>`;
+  }
+  else if(p.view==='classlist'){
+    const {result, meta} = aggregateScores(branchId, semId, {groupBy:'class'});
+    const rows = Object.keys(result).map(k=>({k,a:sumAggs(result[k]),label:meta[k].label}))
+      .filter(x=>x.a.total).sort((x,y)=>passRate(x.a)-passRate(y.a));
+    body = `<div style="background:var(--surface-2);border:0.5px solid #ECE7F5;border-radius:16px;padding:6px 18px">
+      ${rows.map(x=>passListRow(x.label,x.a,`passOpenClass('${encodeURIComponent(x.label)}')`,'클릭 → 회차별')).join('')||'<div style="padding:20px;text-align:center;color:#A99FC4">데이터 없음</div>'}
+    </div>`;
+  }
+  else if(p.view==='lesson'){
+    const {result, lessonLabel} = aggregateScores(branchId, semId, {groupBy:'lesson', classLabel:p.classLabel});
+    const rows = Object.keys(result).map(k=>{const [g,h]=k.split('|');return {k,g,h,a:result[k][g],lesson:lessonLabel[k]};})
+      .filter(x=>x.a&&x.a.total).sort((x,y)=> x.g===y.g?(parseInt(x.h)||0)-(parseInt(y.h)||0):x.g.localeCompare(y.g));
+    crumbLine = `<div style="margin-bottom:14px;font-size:12.5px;color:#6B5D9E"><span onclick="setPassView('classlist')" style="cursor:pointer;color:#7C5CFF">← 반별</span> · <b>${esc(p.classLabel)}</b> · 회차별 <span onclick="passOpenStudents('${encodeURIComponent(p.classLabel)}')" style="cursor:pointer;color:#7C5CFF;margin-left:8px">학생별 보기 →</span></div>`;
+    body = `<div style="background:var(--surface-2);border:0.5px solid #ECE7F5;border-radius:16px;padding:6px 18px">
+      ${rows.map(x=>passListRow(`${x.g} ${x.h}회`,x.a,'',x.lesson||'')).join('')||'<div style="padding:20px;text-align:center;color:#A99FC4">데이터 없음</div>'}
+    </div>`;
+  }
+  else if(p.view==='student'){
+    const {result, meta} = aggregateScores(branchId, semId, {groupBy:'student', classLabel:p.classLabel});
+    const rows = Object.keys(result).map(k=>({k,a:sumAggs(result[k]),label:meta[k].label}))
+      .filter(x=>x.a.total).sort((x,y)=>(y.a.fail+y.a.noshow)-(x.a.fail+x.a.noshow));
+    crumbLine = `<div style="margin-bottom:14px;font-size:12.5px;color:#6B5D9E"><span onclick="passOpenClass('${encodeURIComponent(p.classLabel)}')" style="cursor:pointer;color:#7C5CFF">← 회차별</span> · <b>${esc(p.classLabel)}</b> · 학생별 (문제 많은 순)</div>`;
+    body = `<div style="background:var(--surface-2);border:0.5px solid #ECE7F5;border-radius:16px;padding:6px 18px">
+      ${rows.map(x=>passListRow(x.label,x.a,'','')).join('')||'<div style="padding:20px;text-align:center;color:#A99FC4">데이터 없음</div>'}
+    </div>`;
+  }
+
+  el('content').innerHTML = `
+    <div class="page-head"><h2>STaRT 시험 통과율</h2>
+      <div class="sub">${esc(db.semesters.find(s=>s.id===semId).name)} · Q앱 성적 기준</div></div>
+    ${uploadZone}
+    <div style="display:flex;gap:6px;margin-bottom:18px">
+      ${tab('branch','분원 전체')}
+      ${tab('classlist','반별')}
+    </div>
+    ${crumbLine}
+    ${body}`;
+}
 /* ---- 메인 렌더 ---- */
 async function renderStart(){
   crumbs([{label:'STaRT 외출·시험 관리'}]);
