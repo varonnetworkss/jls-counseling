@@ -950,12 +950,13 @@ function buildShell(){
 } else if(isTeacher){
     nav.innerHTML = `
       <div class="sb-sect">선생님</div>
-      <div class="sb-item" data-nav="myclasses">${I.dash}<span>내 반 현황</span></div> 
+      <div class="sb-item" data-nav="myclasses">${I.dash}<span>내 반 현황</span></div>
       <div class="sb-item" data-nav="segments">${I.seg}<span>세그먼트</span></div>
       <div class="sb-item" data-nav="myaccount">${I.acct}<span>계정 관리</span></div>`;
+  } else if(session.role==='assistant'){
     nav.innerHTML = `
       <div class="sb-sect">조교</div>
-     <div class="sb-item" data-nav="start">${I.stu}<span>STaRT 관리</span></div>`;
+      <div class="sb-item" data-nav="start">${I.stu}<span>STaRT 관리</span></div>`;
  } else {
     nav.innerHTML = `
       <div class="sb-sect">분원</div>
