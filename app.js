@@ -4678,11 +4678,11 @@ function passRowWithOverride(classLabel, a){
 /* 담임 행 — 클릭하면 반 목록 + 시험구분별 상세 펼침 */
 function passTeacherRow(teacher, sortAgg, byGubun){
   if(!state.passOpenTeachers) state.passOpenTeachers = {};
+  if(!state.passTeacherClass) state.passTeacherClass = {};
   const open = !!state.passOpenTeachers[teacher];
   const bad = passRate(sortAgg) < 75;
-const branchId = session.branchId, semId = state.semId;
+  const branchId = session.branchId, semId = state.semId;
 
-  // 이 담임의 담당 반 목록
   const classes = [...new Set(activeScores(branchId, semId)
     .filter(s=> resolveQTeacher(branchId, semId, s.classLabel, s.gubun, s.teacher)===teacher)
     .map(s=>s.classLabel))];
@@ -4700,14 +4700,24 @@ const branchId = session.branchId, semId = state.semId;
 
   if(!open) return head;
 
-  // 반 이름 태그 (레벨 라벨만 짧게)
+  // 선택된 반 (없으면 전체)
+  const selClass = state.passTeacherClass[teacher] || '';
   const shortName = c=>{ const m=c.match(/\[([^\]]+)\]/); return m?m[1]:c; };
-  const tags = classes.map(c=>`<span style="font-size:11.5px;background:#F1ECFC;color:#5B4B8A;padding:4px 10px;border-radius:8px">${esc(shortName(c))}</span>`).join('');
 
-  // 시험구분별 표
+  // 반 태그 (클릭 필터) — "전체" + 각 반
+  const tag = (label, cls, active)=>`<span onclick="event.stopPropagation();selectPassTeacherClass('${encodeURIComponent(teacher)}','${encodeURIComponent(cls)}')" style="font-size:11.5px;padding:4px 11px;border-radius:8px;cursor:pointer;${active?'background:#7C5CFF;color:#fff':'background:#F1ECFC;color:#5B4B8A'}">${esc(label)}</span>`;
+  const tags = tag('전체','',!selClass) + classes.map(c=>tag(shortName(c), c, selClass===c)).join('');
+
+  // 표 데이터: 선택 반이 있으면 그 반만 재집계, 없으면 담임 전체(byGubun)
+  let showGubun = byGubun;
+  if(selClass){
+    const {result} = aggregateScores(branchId, semId, {groupBy:'class', classLabel:selClass});
+    showGubun = result[selClass] || {};
+  }
+
   const gLabel = g=> g==='모범인증'?'문법인증':g;
   const rowsHtml = QAPP_GUBUNS.map(g=>{
-    const a = byGubun[g];
+    const a = showGubun[g];
     if(!a || !a.total) return '';
     const gbad = passRate(a)<75;
     return `<tr style="border-top:0.5px solid #EEEBF6">
@@ -4721,17 +4731,23 @@ const branchId = session.branchId, semId = state.semId;
 
   const panel = `<div style="padding:4px 4px 16px;background:#FAF8FE;border-radius:0 0 12px 12px;margin-bottom:6px;border-bottom:0.5px solid #EEEBF6">
     <div style="padding:0 12px 12px">
-      <div style="font-size:11px;color:#A99FC4;margin-bottom:6px">담당 반 ${classes.length}개</div>
+      <div style="font-size:11px;color:#A99FC4;margin-bottom:6px">반 선택 (담당 ${classes.length}개)</div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">${tags}</div>
-      <div style="font-size:11px;color:#A99FC4;margin-bottom:6px">시험구분별</div>
+      <div style="font-size:11px;color:#A99FC4;margin-bottom:6px">${selClass?esc(shortName(selClass))+' 반':'전체'} · 시험구분별</div>
       <table style="width:100%;font-size:12px;border-collapse:collapse">
         <tr style="color:#A99FC4;font-size:10.5px"><td style="padding:2px 0">구분</td><td style="text-align:right">총</td><td style="text-align:right">통과</td><td style="text-align:right">미통과</td><td style="text-align:right">미응시</td></tr>
-        ${rowsHtml}
+        ${rowsHtml||'<tr><td colspan="5" style="padding:12px;text-align:center;color:#A99FC4">데이터 없음</td></tr>'}
       </table>
     </div>
   </div>`;
 
   return head + panel;
+}
+function selectPassTeacherClass(tEnc, cEnc){
+  const t = decodeURIComponent(tEnc), c = decodeURIComponent(cEnc);
+  if(!state.passTeacherClass) state.passTeacherClass = {};
+  state.passTeacherClass[t] = c;
+  render();
 }
 function togglePassTeacher(tEnc){
   const t = decodeURIComponent(tEnc);
