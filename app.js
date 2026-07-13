@@ -4622,6 +4622,28 @@ function aggregateScores(branchId, semId, opts={}){
 
   return {result, meta, lessonLabel};
 }
+/* 학생별 집계 — 역산 없이, 실제 응시 기록만. (반 꼬임 유령 방지) */
+function aggregateStudents(branchId, semId){
+  const scores = activeScores(branchId, semId);
+  // 학생 x (구분+회차)로 묶어서 최종 상태 분류
+  const byStuExam = {};
+  scores.forEach(s=>{
+    const k = s.studentCode+'|'+s.gubun+'|'+s.hoi;
+    (byStuExam[k]||(byStuExam[k]=[])).push(s);
+  });
+  const result = {}, meta = {};
+  const seen = new Set();
+  Object.keys(byStuExam).forEach(k=>{
+    const [code,gubun,hoi] = k.split('|');
+    const recs = byStuExam[k];
+    const {cat, reserved} = classifyExam(recs);
+    if(!result[code]){ result[code]={}; QAPP_GUBUNS.forEach(g=>result[code][g]=emptyAgg()); meta[code]={label:recs[0].studentName||code}; }
+    const a = result[code][gubun];
+    a.total++; a[cat]++;
+    if((cat==='fail'||cat==='noshow') && reserved) a[cat+'_rv']++;
+  });
+  return {result, meta};
+}
 /* ========================================================================
    STaRT 시험 통과율 — 화면
    ======================================================================== */
@@ -4896,7 +4918,7 @@ function passStudentDetail(code){
     return (parseInt(ha)||0)-(parseInt(hb)||0);
   });
 
-  const rows = keys.map(k=>{
+  const rows = keys.map((k,i)=>{
     const [g,h]=k.split('|');
     const recs = byKey[k].sort((x,y)=>(x.examDate||'').localeCompare(y.examDate||''));
     const first = recs[0];
@@ -4908,6 +4930,7 @@ function passStudentDetail(code){
       ? tries.map(r=>`${r.eungsi==='재시험'?'재 ':''}${r.jumsu}/${r.baejeom}`).join(' · ')
       : '미응시';
     return `<tr style="border-top:0.5px solid #EEEBF6">
+      <td style="padding:8px 4px;font-size:11px;color:#B8A6F0;font-weight:700;text-align:center;width:26px">${i+1}</td>
       <td style="padding:8px 6px;font-size:11.5px;font-weight:700;color:#3D3560;white-space:nowrap">${esc(gLabel(g))} ${esc(h)}회</td>
       <td style="padding:8px 6px;font-size:11px;color:#8A7CB8">${esc(first.textbook||'')}${first.lesson?` · ${esc(first.lesson)}`:''}</td>
       <td style="padding:8px 6px;font-size:11.5px;color:#3D3560;text-align:right;white-space:nowrap">${esc(scoreStr)}</td>
@@ -5077,8 +5100,8 @@ function renderPassrate(){
 
   // ===== 학생별 (전체) =====
   else if(p.view==='student'){
-    const {result, meta} = aggregateScores(branchId, semId, {groupBy:'student', gubun:p.gubun});
-    const rows = Object.keys(result).map(k=>({k, a: p.gubun?result[k][p.gubun]:sumAggs(result[k]), byGubun:result[k], label:meta[k].label}))
+    const {result, meta} = aggregateStudents(branchId, semId);
+    const rows = Object.keys(result).map(k=>({k, a: sumAggs(result[k]), byGubun:result[k], label:meta[k].label}))
       .filter(x=>x.a && x.a.total).sort((x,y)=>(y.a.fail+y.a.noshow)-(x.a.fail+x.a.noshow));
    const q = (state.passStudentSearch||'').trim();
     const filtered = q ? rows.filter(x=>x.label.includes(q)) : rows;
