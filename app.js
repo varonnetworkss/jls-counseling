@@ -4789,10 +4789,10 @@ function passStudentStatusRow(s){
  const stu = db.students.find(x=>x.code===s.code);
   const schoolInfo = stu ? `${stu.school||''} ${stu.grade||''}`.trim() : '';
   const reserve = (s.cat==='fail'||s.cat==='noshow') ? passReserveInfo(s.attempts) : '';
-  return `<div style="display:flex;align-items:center;gap:10px;padding:12px 4px;border-bottom:0.5px solid #EEEBF6">
-    <div style="width:76px;flex:none;font-size:13.5px;font-weight:700;color:#2E2748;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.name)}</div>
-    <div style="width:140px;flex:none;font-size:11px;color:#A99FC4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(schoolInfo)}</div>
-    <div style="flex:1;font-size:12px">${scoreLine}</div>
+  return `<div class="pass-student-row" style="display:flex;align-items:center;gap:10px;padding:12px 4px;border-bottom:0.5px solid #EEEBF6">
+    <div class="pss-name" style="width:76px;flex:none;font-size:13.5px;font-weight:700;color:#2E2748;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.name)}</div>
+    <div class="pss-school" style="width:140px;flex:none;font-size:11px;color:#A99FC4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(schoolInfo)}</div>
+    <div class="pss-score" style="flex:1;font-size:12px">${scoreLine}</div>
     ${reserve?`<span style="font-size:10.5px;color:#7C5CD9;background:#F1ECFC;padding:3px 8px;border-radius:6px;white-space:nowrap;flex:none">예약 ${esc(reserve)}</span>`:''}
     <span style="font-size:11.5px;font-weight:700;color:${badge[2]};background:${badge[1]};padding:4px 11px;border-radius:8px;white-space:nowrap;flex:none">${badge[0]}</span>
   </div>`;

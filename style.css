@@ -782,3 +782,10 @@ body.wide-page #content{ max-width:1400px !important; }
   .sidebar{display:flex !important;transform:translateX(-100%)}
   .sidebar.open{transform:translateX(0)}
 }
+@media(max-width:600px){
+  /* 성적 학생행 — 폰에선 압축 */
+  .pass-student-row{flex-wrap:wrap !important}
+  .pass-student-row .pss-school{display:none !important}
+  .pass-student-row .pss-name{width:auto !important;flex:1 !important}
+  .pass-student-row .pss-score{flex-basis:100% !important;order:5;padding-left:0 !important}
+}
