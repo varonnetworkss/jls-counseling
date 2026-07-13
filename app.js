@@ -2254,7 +2254,7 @@ function renderDataManagement(){
           </div>
           <div><h3>전체명단 업로드</h3></div>
         </div>
-        <div class="pd">학생 DB이자 학기별 반·담임 정보의 기준입니다. 정상 LMS에서 내려받은 전체명단 엑셀을 그대로 올리면 됩니다. 특이사항 열에 '신규생' 또는 '복학생'이 적힌 학생만 HC1·HC2 대상이 됩니다. 같은 학생을 다시 올리면 최신 반·담임 정보로 갱신됩니다.</div>
+        <div class="pd">학생 DB이자 학기별 반·담임 정보의 기준입니다. 정상 IMS에서 내려받은 전체명단 엑셀을 그대로 올리면 됩니다. 특이사항 열에 '신규생' 또는 '복학생'이 적힌 학생만 HC1·HC2 대상이 됩니다. 같은 학생을 다시 올리면 최신 반·담임 정보로 갱신됩니다.</div>
         <div class="dropzone" id="rosterZone">
           <div class="dz-i">＋</div>
           <div class="dz-t">엑셀 파일을 끌어다 놓거나 클릭</div>
