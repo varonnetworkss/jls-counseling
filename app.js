@@ -4444,6 +4444,144 @@ let startState = {
 };
 
 let startMode = 'outing';
+/* ========================================================================
+   STaRT 시험 통과율 — 파싱 · 집계
+   ======================================================================== */
+const QAPP_GUBUNS = ['CHAT','성과','활용','문법인증'];
+const QAPP_OVERRIDE_GUBUNS = ['활용','문법인증'];  // 담임 오버라이드 대상
+
+function qNorm(v){ return v==null ? '' : String(v).trim(); }
+
+/* 현재 분원·학기의 퇴원생 회원코드 집합 */
+function withdrawnCodes(branchId, semId){
+  const set = new Set();
+  (db.semesterRecords||[]).forEach(r=>{
+    if(r.branchId===branchId && r.semesterId===semId && r.status==='withdraw'){
+      const stu = db.students.find(s=>s.id===r.studentId);
+      if(stu && stu.code) set.add(stu.code);
+    }
+  });
+  return set;
+}
+
+/* 반+구분에 대해 실제 담임 결정: 활용·문법이면 오버라이드 우선 */
+function resolveQTeacher(branchId, semId, classLabel, gubun, fileTeacher){
+  if(QAPP_OVERRIDE_GUBUNS.includes(gubun)){
+    const ov = (db.teacherOverrides||[]).find(o=>
+      o.branchId===branchId && o.semesterId===semId &&
+      o.classLabel===classLabel && o.gubun===gubun);
+    if(ov && ov.teacher) return ov.teacher;
+  }
+  return fileTeacher;
+}
+
+/* 현재 분원·학기의 유효 성적 (퇴원생 제외) */
+function activeScores(branchId, semId){
+  const wd = withdrawnCodes(branchId, semId);
+  return (db.qappScores||[]).filter(s=>
+    s.branchId===branchId && s.semesterId===semId &&
+    s.studentCode && !wd.has(s.studentCode));
+}
+
+/* 반 단위 역산: 반 -> Set("구분|회차") = 그 반이 봐야 할 시험 목록 */
+function classExamSets(scores){
+  const map = {};  // classLabel -> Set
+  scores.forEach(s=>{
+    (map[s.classLabel] || (map[s.classLabel]=new Set())).add(s.gubun+'|'+s.hoi);
+  });
+  return map;
+}
+
+/* 학생 x (구분+회차)별 최종 상태 분류
+   반환: 'pass'(첫통과) | 'repass'(재시험통과) | 'fail'(미통과) | 'noshow'(미응시)
+   + 예약여부 */
+function classifyExam(recs){
+  if(!recs || recs.length===0) return {cat:'noshow', reserved:false};
+  const passFirst  = recs.some(r=> r.eungsi==='응시' && r.tonggwa==='통과');
+  const passRetest = recs.some(r=> r.eungsi==='재시험' && r.tonggwa==='통과');
+  const reserved   = recs.some(r=> qNorm(r.yeyak));
+  if(passFirst)  return {cat:'pass',   reserved};
+  if(passRetest) return {cat:'repass', reserved};
+  const allNoshow = recs.every(r=> r.eungsi==='미응시');
+  if(allNoshow)  return {cat:'noshow', reserved};
+  return {cat:'fail', reserved};
+}
+
+/* 빈 집계 버킷 */
+function emptyAgg(){
+  return {total:0, pass:0, repass:0, fail:0, noshow:0, fail_rv:0, noshow_rv:0};
+}
+function passRate(a){
+  return a.total ? Math.round((a.pass+a.repass)*100/a.total) : 0;
+}
+
+/* 핵심 집계 엔진.
+   groupBy: 'branch' | 'teacher' | 'class' | 'lesson' | 'student'
+   filter:  {gubun, classLabel} 로 범위 좁히기 (옵션)
+   반환: { [groupKey]: { [gubun]: aggBucket }, ... } + 메타 */
+function aggregateScores(branchId, semId, opts={}){
+  const scores = activeScores(branchId, semId);
+  const classSets = classExamSets(scores);
+
+  // (학생코드, 구분, 회차) -> 그 학생의 그 시험 기록들
+  const byStuExam = {};
+  scores.forEach(s=>{
+    const k = s.studentCode+'|'+s.gubun+'|'+s.hoi;
+    (byStuExam[k] || (byStuExam[k]=[])).push(s);
+  });
+
+  // 반별 학생 목록
+  const classStudents = {};   // classLabel -> Set(code)
+  const stuMeta = {};         // code -> {name, classLabel, teacherByGubun}
+  scores.forEach(s=>{
+    (classStudents[s.classLabel] || (classStudents[s.classLabel]=new Set())).add(s.studentCode);
+    if(!stuMeta[s.studentCode]) stuMeta[s.studentCode] = {name:s.studentName, classLabel:s.classLabel, fileTeacher:s.teacher};
+  });
+
+  const result = {};  // groupKey -> gubun -> agg
+  const meta = {};    // groupKey -> {label, ...}
+  const groupBy = opts.groupBy || 'branch';
+
+  // 회차 라벨 저장 (lesson 뷰용)
+  const lessonLabel = {};  // "구분|회차" -> lesson
+
+  Object.entries(classSets).forEach(([classLabel, examSet])=>{
+    // 필터: 특정 반만
+    if(opts.classLabel && classLabel!==opts.classLabel) return;
+    const students = classStudents[classLabel] || new Set();
+
+    examSet.forEach(examKey=>{
+      const [gubun, hoi] = examKey.split('|');
+      // 필터: 특정 구분만
+      if(opts.gubun && gubun!==opts.gubun) return;
+
+      students.forEach(code=>{
+        const recs = byStuExam[code+'|'+gubun+'|'+hoi];
+        const {cat, reserved} = classifyExam(recs);
+        if(recs && recs[0] && recs[0].lesson) lessonLabel[gubun+'|'+hoi] = recs[0].lesson;
+
+        // 그룹 키 결정
+        let gkey, glabel;
+        if(groupBy==='branch'){ gkey='ALL'; glabel='분원 전체'; }
+        else if(groupBy==='teacher'){
+          gkey = resolveQTeacher(branchId, semId, classLabel, gubun, stuMeta[code]?.fileTeacher||'');
+          glabel = gkey;
+        }
+        else if(groupBy==='class'){ gkey=classLabel; glabel=classLabel; }
+        else if(groupBy==='lesson'){ gkey=gubun+'|'+hoi; glabel=hoi+'회'; }
+        else if(groupBy==='student'){ gkey=code; glabel=stuMeta[code]?.name||code; }
+
+        if(!result[gkey]){ result[gkey]={}; QAPP_GUBUNS.forEach(g=>result[gkey][g]=emptyAgg()); meta[gkey]={label:glabel}; }
+        const a = result[gkey][gubun];
+        a.total++;
+        a[cat]++;
+        if((cat==='fail'||cat==='noshow') && reserved) a[cat+'_rv']++;
+      });
+    });
+  });
+
+  return {result, meta, lessonLabel};
+}
 /* ---- 메인 렌더 ---- */
 async function renderStart(){
   crumbs([{label:'STaRT 외출·시험 관리'}]);
