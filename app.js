@@ -186,8 +186,12 @@ const TABLES = [
     fromRow:r=>({id:r.id,branchId:r.branch_id,semesterId:r.semester_id,className:r.class_name,fromTeacher:r.from_teacher,toTeacher:r.to_teacher,date:r.date}) },
     { key:'segments', table:'segments', toRow:s=>({id:s.id,branch_id:s.branchId,semester_id:s.semesterId,stage:s.stage,sec1:s.sec1,sec2:s.sec2,sec3:s.sec3,sec4:s.sec4,updated_at:s.updatedAt}),
     fromRow:r=>({id:r.id,branchId:r.branch_id,semesterId:r.semester_id,stage:r.stage,sec1:r.sec1,sec2:r.sec2,sec3:r.sec3,sec4:r.sec4,updatedAt:r.updated_at}) },
-    { key:'mcExemptions', table:'mc_exemptions', toRow:e=>({id:e.id,student_id:e.studentId,branch_id:e.branchId,semester_id:e.semesterId,stage:e.stage}),
+   { key:'mcExemptions', table:'mc_exemptions', toRow:e=>({id:e.id,student_id:e.studentId,branch_id:e.branchId,semester_id:e.semesterId,stage:e.stage}),
     fromRow:r=>({id:r.id,studentId:r.student_id,branchId:r.branch_id,semesterId:r.semester_id,stage:r.stage}) },
+    { key:'qappScores', table:'qapp_scores', toRow:s=>({id:s.id,branch_id:s.branchId,semester_id:s.semesterId,student_code:s.studentCode,student_name:s.studentName,class_label:s.classLabel,gubun:s.gubun,hoi:s.hoi,lesson:s.lesson,teacher:s.teacher,jumsu:s.jumsu,baejeom:s.baejeom,eungsi:s.eungsi,tonggwa:s.tonggwa,yeyak:s.yeyak,exam_date:s.examDate,fingerprint:s.fingerprint}),
+    fromRow:r=>({id:r.id,branchId:r.branch_id,semesterId:r.semester_id,studentCode:r.student_code,studentName:r.student_name,classLabel:r.class_label,gubun:r.gubun,hoi:r.hoi,lesson:r.lesson,teacher:r.teacher,jumsu:r.jumsu,baejeom:r.baejeom,eungsi:r.eungsi,tonggwa:r.tonggwa,yeyak:r.yeyak,examDate:r.exam_date,fingerprint:r.fingerprint}) },
+    { key:'teacherOverrides', table:'teacher_overrides', toRow:o=>({id:o.id,branch_id:o.branchId,semester_id:o.semesterId,class_label:o.classLabel,gubun:o.gubun,teacher:o.teacher}),
+    fromRow:r=>({id:r.id,branchId:r.branch_id,semesterId:r.semester_id,classLabel:r.class_label,gubun:r.gubun,teacher:r.teacher}) },
 ];
 
 function blankDB(){
