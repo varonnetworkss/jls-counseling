@@ -4757,6 +4757,16 @@ function passLessonStudents(branchId, semId, classLabel, gubun, hoi){
     return order[a.cat]-order[b.cat];
   });
 }
+/* 응시 이력 중 예약일시 추출 (가장 최근 것) */
+function passReserveInfo(attempts){
+  const withRv = attempts.filter(a=> a.yeyak && String(a.yeyak).trim());
+  if(!withRv.length) return '';
+  const raw = String(withRv[withRv.length-1].yeyak).trim();
+  // "2026-07-14 / 20:00" → "07-14 20:00"
+  const m = raw.match(/(\d{4})-(\d{2})-(\d{2})\s*\/?\s*(\d{1,2}:\d{2})/);
+  if(m) return `${m[2]}-${m[3]} ${m[4]}`;
+  return raw;
+}
 function passStudentStatusRow(s){
   const badge = {
     pass:   ['통과','#EEF1FE','#4B2FB8'],
@@ -4779,7 +4789,7 @@ function passStudentStatusRow(s){
   return `<div style="display:flex;align-items:center;gap:12px;padding:12px 4px;border-bottom:0.5px solid #EEEBF6">
     <div style="width:80px;flex:none;font-size:13.5px;font-weight:700;color:#2E2748">${esc(s.name)}</div>
     <div style="flex:1;font-size:12px">${scoreLine}</div>
-    ${s.reserved?`<span style="font-size:10.5px;color:#7C5CD9;background:#F1ECFC;padding:3px 8px;border-radius:6px">예약</span>`:''}
+    ${(s.cat==='fail'||s.cat==='noshow') && passReserveInfo(s.attempts)?`<span style="font-size:10.5px;color:#7C5CD9;background:#F1ECFC;padding:3px 9px;border-radius:6px;white-space:nowrap">예약 ${esc(passReserveInfo(s.attempts))}</span>`:''}
     <span style="font-size:11.5px;font-weight:700;color:${badge[2]};background:${badge[1]};padding:4px 11px;border-radius:8px;flex:none">${badge[0]}</span>
   </div>`;
 }
