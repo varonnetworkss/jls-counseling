@@ -4481,10 +4481,12 @@ function resolveQTeacher(branchId, semId, classLabel, gubun, fileTeacher){
 function activeScores(branchId, semId){
   const wd = withdrawnCodes(branchId, semId);
   const validClasses = qappValidClasses(branchId, semId);
+  rconst validCodes = new Set((db.students||[]).map(s=>s.code));
   return (db.qappScores||[]).filter(s=>
     s.branchId===branchId && s.semesterId===semId &&
     s.studentCode && !wd.has(s.studentCode) &&
-    validClasses.has(s.classLabel));   // 홈페이지에 등록된 정규반만 (내신반 등 제외)
+    validClasses.has(s.classLabel) &&
+    validCodes.has(s.studentCode));   // 홈페이지 명단에 있는 학생만
 }
 
 /* 홈페이지 semesterRecords의 className = 큐앱 classLabel. 여기 있는 반만 정규반 */
@@ -4529,7 +4531,17 @@ function emptyAgg(){
 function passRate(a){
   return a.total ? Math.round((a.pass+a.repass)*100/a.total) : 0;
 }
-
+/* 학생코드 → 입학일 (semesterRecords에서). 없으면 null(=학기초부터) */
+function enrollDateOf(branchId, semId){
+  const map = {};  // code -> enrollDate
+  (db.semesterRecords||[]).forEach(r=>{
+    if(r.branchId===branchId && r.semesterId===semId && r.enrollDate){
+      const stu = db.students.find(s=>s.id===r.studentId);
+      if(stu && stu.code) map[stu.code] = r.enrollDate;
+    }
+  });
+  return map;
+}
 /* 핵심 집계 엔진.
    groupBy: 'branch' | 'teacher' | 'class' | 'lesson' | 'student'
    filter:  {gubun, classLabel} 로 범위 좁히기 (옵션)
@@ -4537,6 +4549,13 @@ function passRate(a){
 function aggregateScores(branchId, semId, opts={}){
   const scores = activeScores(branchId, semId);
   const classSets = classExamSets(scores);
+  const enrollMap = enrollDateOf(branchId, semId);   // code -> 입학일
+  // 반+구분+회차 -> 그 시험이 치러진 날짜 (누군가 응시한 날)
+  const examDateMap = {};  // classLabel|gubun|hoi -> examDate
+  scores.forEach(s=>{
+    const k = s.classLabel+'|'+s.gubun+'|'+s.hoi;
+    if(s.examDate && (!examDateMap[k] || s.examDate<examDateMap[k])) examDateMap[k]=s.examDate;
+  });
 
   // (학생코드, 구분, 회차) -> 그 학생의 그 시험 기록들
   const byStuExam = {};
@@ -4572,6 +4591,12 @@ function aggregateScores(branchId, semId, opts={}){
 
       students.forEach(code=>{
         const recs = byStuExam[code+'|'+gubun+'|'+hoi];
+        // 미응시(기록 없음)인데, 그 시험이 이 학생 입학일보다 전에 치러졌으면 → 없는 시험 (제외)
+        if(!recs){
+          const enroll = enrollMap[code];
+          const examDate = examDateMap[classLabel+'|'+gubun+'|'+hoi];
+          if(enroll && examDate && examDate < enroll) return;  // 입학 전 시험은 건너뜀
+        }
         const {cat, reserved} = classifyExam(recs);
         if(recs && recs[0] && recs[0].lesson) lessonLabel[gubun+'|'+hoi] = recs[0].lesson;
 
