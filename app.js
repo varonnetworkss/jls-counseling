@@ -5098,7 +5098,7 @@ function renderPassrate(){
     const rows = Object.keys(result).map(k=>({k, a: p.gubun?result[k][p.gubun]:sumAggs(result[k]), label:meta[k].label}))
       .filter(x=>x.a && x.a.total).sort((x,y)=>passRate(x.a)-passRate(y.a));
     body = `<div style="background:var(--surface-2);border:0.5px solid #ECE7F5;border-radius:16px;padding:6px 18px">
-      ${rows.map(x=>passListRow(x.label,x.a,`passOpenClass('${encodeURIComponent(x.label)}')`,'클릭 → 회차별')).join('')||emptyRow()}
+      ${rows.map(x=>passListRow(x.label,x.a,`passOpenClass('${encodeURIComponent(x.label)}')`,'')).join('')||emptyRow()}
     </div>`;
   }
 
