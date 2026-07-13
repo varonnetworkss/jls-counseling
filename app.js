@@ -803,7 +803,55 @@ function parseRoute(){
 }
 function go(path){ location.hash = '#/'+path; }
 window.addEventListener('hashchange', render);
+/* ===== 비밀번호 변경 / 초기화 ===== */
+function openPrompt(title, msg, placeholder, onOk){
+  const html = `
+    <div class="modal-box" style="max-width:420px">
+      <h3 style="font-size:16px;font-weight:700;margin-bottom:8px">${esc(title)}</h3>
+      <div class="pd" style="margin-bottom:14px">${esc(msg)}</div>
+      <input id="promptInput" placeholder="${esc(placeholder||'')}"
+        style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;font-size:14px;margin-bottom:16px">
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn" onclick="closeModal()">취소</button>
+        <button class="btn primary" id="promptOk">확인</button>
+      </div>
+    </div>`;
+  openModal(html);
+  const inp = el('promptInput');
+  if(inp){ inp.focus(); inp.onkeydown = e=>{ if(e.key==='Enter') el('promptOk').click(); }; }
+  el('promptOk').onclick = ()=> onOk(el('promptInput').value);
+}
+// 본인 비밀번호 변경 (현재 비번 확인 후 교체)
+function changeMyPassword(){
+  const cur = el('pwCur').value;
+  const nw  = el('pwNew').value.trim();
+  const nw2 = el('pwNew2').value.trim();
+  const me = db.users.find(u=>u.id===session.userId);
+  if(!me){ toast('세션이 만료되었습니다. 다시 로그인하세요.','err'); return; }
+  if(me.password !== cur){ toast('현재 비밀번호가 올바르지 않습니다','err'); return; }
+  if(!nw){ toast('새 비밀번호를 입력하세요','err'); return; }
+  if(nw.length < 4){ toast('비밀번호는 4자 이상이어야 합니다','err'); return; }
+  if(nw !== nw2){ toast('새 비밀번호가 서로 다릅니다','err'); return; }
+  if(nw === cur){ toast('현재 비밀번호와 동일합니다','err'); return; }
+  me.password = nw;
+  showSaving('비밀번호 변경 중…');
+  saveDB().then(ok=>{ hideSaving(); toast(ok?'비밀번호가 변경되었습니다':'저장 실패, 다시 시도하세요', ok?'ok':'err'); render(); });
+}
 
+// 하위 계정 비밀번호 초기화 (admin→분원, 분원→담임·조교)
+function resetAccountPassword(userId){
+  const u = db.users.find(x=>x.id===userId);
+  if(!u) return;
+  const label = u.teacherName || (getBranch(u.branchId)?.name) || u.username;
+  openPrompt('비밀번호 초기화', `${esc(label)} 계정의 새 비밀번호를 입력하세요.`, '새 비밀번호', (val)=>{
+    const nw = (val||'').trim();
+    if(!nw){ toast('비밀번호를 입력하세요','err'); return; }
+    if(nw.length < 4){ toast('비밀번호는 4자 이상이어야 합니다','err'); return; }
+    u.password = nw;
+    showSaving('비밀번호 저장 중…');
+    saveDB().then(ok=>{ hideSaving(); toast(ok?`${label} 비밀번호가 변경되었습니다`:'저장 실패', ok?'ok':'err'); closeModal(); render(); });
+  });
+}
 /* ============================================================================
    5. 로그인 / 로그아웃
    ============================================================================ */
@@ -905,7 +953,7 @@ function buildShell(){
       <div class="sb-item" data-nav="segments-edit">${I.seg}<span>세그먼트 공지</span></div>
 
       <div class="sb-sect">설정</div>
-      <div class="sb-item" data-nav="teachers">${I.teach}<span>선생님 계정</span></div>
+      <div class="sb-item" data-nav="teachers">${I.teach}<span>계정 관리</span></div>
 <div class="sb-item" data-nav="data">${I.data}<span>데이터관리</span></div>`;
   }
   nav.querySelectorAll('[data-nav]').forEach(it=>{
@@ -3433,6 +3481,7 @@ function renderAccounts(){
   el('content').innerHTML = `
     <div class="page-head"><h2>분원 계정 관리</h2>
       <div class="sub">분원 계정을 생성하면 해당 계정은 자기 분원 데이터만 보고 업로드할 수 있습니다.</div></div>
+    ${myAccountCard()}
     <div class="panel" style="margin-bottom:16px">
       <h3 style="font-size:14.5px;font-weight:650;margin-bottom:14px">새 분원 계정 생성</h3>
       <div class="acct-add">
@@ -3451,7 +3500,7 @@ function renderAccounts(){
     </div>
     <div class="table-wrap">
       <div class="table-scroll"><table class="grid">
-        <thead><tr><th>분원</th><th>아이디</th><th>비밀번호</th><th>학생 수</th><th class="cc">관리</th></tr></thead>
+        <thead><tr><th>분원</th><th>아이디</th><th>학생 수</th><th class="cc">관리</th></tr></thead>
         <tbody>
           ${branchUsers.map(u=>{
             const b=getBranch(u.branchId);
@@ -3459,9 +3508,11 @@ function renderAccounts(){
             return `<tr>
               <td><b>${esc(b?b.name:'(분원없음)')}</b></td>
               <td><span class="code-chip">${esc(u.username)}</span></td>
-              <td style="color:var(--ink-3)">${esc(u.password)}</td>
               <td class="num">${cnt}명</td>
-              <td class="cc"><button class="btn sm" style="color:var(--neg)" onclick="deleteAccount('${u.id}')">삭제</button></td>
+              <td class="cc">
+                <button class="btn sm" onclick="resetAccountPassword('${u.id}')">비번 초기화</button>
+                <button class="btn sm" style="color:var(--neg)" onclick="deleteAccount('${u.id}')">삭제</button>
+              </td>
             </tr>`;
           }).join('')}
         </tbody>
@@ -3510,8 +3561,10 @@ function renderTeacherAccounts(){
   const assistantUsers = db.users.filter(u=>u.role==='assistant' && u.branchId===branchId);
  
   el('content').innerHTML = `
-    <div class="page-head"><h2>선생님·조교 계정</h2>
+    <div class="page-head"><h2>계정 관리</h2>
       <div class="sub">${esc(b.name)} · 선생님은 자기 반 상담 현황을, 조교는 STaRT 외출관리만 볼 수 있습니다.</div></div>
+
+    ${myAccountCard()}
  
     <!-- ===== 선생님 계정 ===== -->
     <div class="panel" style="margin-bottom:16px">
@@ -3530,17 +3583,19 @@ function renderTeacherAccounts(){
     </div>
     <div class="table-wrap" style="margin-bottom:24px">
       <div class="table-scroll"><table class="grid">
-        <thead><tr><th>담임</th><th>담당 반</th><th>아이디</th><th>비밀번호</th><th class="cc">관리</th></tr></thead>
+        <thead><tr><th>담임</th><th>담당 반</th><th>아이디</th><th class="cc">관리</th></tr></thead>
         <tbody>
-          ${teacherUsers.length===0?`<tr><td colspan="5" style="padding:16px;color:var(--ink-3);text-align:center">아직 만든 선생님 계정이 없습니다.</td></tr>`:
+          ${teacherUsers.length===0?`<tr><td colspan="4" style="padding:16px;color:var(--ink-3);text-align:center">아직 만든 선생님 계정이 없습니다.</td></tr>`:
           teacherUsers.map(u=>{
             const clsCnt = new Set(activeRecordsOf(branchId, semId).filter(r=>r.teacher===u.teacherName).map(r=>r.className)).size;
             return `<tr>
               <td><b>${esc(u.teacherName||'(미지정)')}</b></td>
               <td>${clsCnt}개 반</td>
-              <td><span class="code-chip">${esc(u.username)}</span></td>
-              <td style="color:var(--ink-3)">${esc(u.password)}</td>
-              <td class="cc"><button class="btn sm" style="color:var(--neg)" onclick="deleteAccount('${u.id}')">삭제</button></td>
+             <td><span class="code-chip">${esc(u.username)}</span></td>
+              <td class="cc">
+                <button class="btn sm" onclick="resetAccountPassword('${u.id}')">비번 초기화</button>
+                <button class="btn sm" style="color:var(--neg)" onclick="deleteAccount('${u.id}')">삭제</button>
+              </td>
             </tr>`;
           }).join('')}
         </tbody>
@@ -3560,14 +3615,16 @@ function renderTeacherAccounts(){
     </div>
     <div class="table-wrap">
       <div class="table-scroll"><table class="grid">
-        <thead><tr><th>조교</th><th>아이디</th><th>비밀번호</th><th class="cc">관리</th></tr></thead>
+        <thead><tr><th>조교</th><th>아이디</th><th class="cc">관리</th></tr></thead>
         <tbody>
-          ${assistantUsers.length===0?`<tr><td colspan="4" style="padding:16px;color:var(--ink-3);text-align:center">아직 만든 조교 계정이 없습니다.</td></tr>`:
+         ${assistantUsers.length===0?`<tr><td colspan="3" style="padding:16px;color:var(--ink-3);text-align:center">아직 만든 조교 계정이 없습니다.</td></tr>`:
           assistantUsers.map(u=>`<tr>
               <td><b>${esc(u.teacherName||'(이름없음)')}</b></td>
               <td><span class="code-chip">${esc(u.username)}</span></td>
-              <td style="color:var(--ink-3)">${esc(u.password)}</td>
-              <td class="cc"><button class="btn sm" style="color:var(--neg)" onclick="deleteAccount('${u.id}')">삭제</button></td>
+              <td class="cc">
+                <button class="btn sm" onclick="resetAccountPassword('${u.id}')">비번 초기화</button>
+                <button class="btn sm" style="color:var(--neg)" onclick="deleteAccount('${u.id}')">삭제</button>
+              </td>
             </tr>`).join('')}
         </tbody>
       </table></div>
