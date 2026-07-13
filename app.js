@@ -898,7 +898,14 @@ function enterApp(){
    location.hash = session.role==='admin' ? '#/admin' : (session.role==='teacher' ? '#/myclasses' : '#/branch');
   } else { render(); }
 }
-
+function openSidebar(){
+  document.querySelector('.sidebar')?.classList.add('open');
+  el('sbBackdrop')?.classList.add('show');
+}
+function closeSidebar(){
+  document.querySelector('.sidebar')?.classList.remove('open');
+  el('sbBackdrop')?.classList.remove('show');
+}
 /* ============================================================================
    6. 앱 셸 (사이드바, 학기 선택)
    ============================================================================ */
@@ -978,7 +985,7 @@ function buildShell(){
 <div class="sb-item" data-nav="data">${I.data}<span>데이터관리</span></div>`;
   }
   nav.querySelectorAll('[data-nav]').forEach(it=>{
-    it.onclick = ()=> go(it.dataset.nav);
+    it.onclick = ()=>{ closeSidebar(); go(it.dataset.nav); };
   });
 }
 function setActiveNav(key){
