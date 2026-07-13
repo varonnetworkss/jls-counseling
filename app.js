@@ -5107,7 +5107,7 @@ function renderPassrate(){
     const filtered = q ? rows.filter(x=>x.label.includes(q)) : rows;
     body = `<div style="margin-bottom:14px">
       <input id="passStuSearch" value="${esc(q)}" placeholder="학생 이름 검색"
-        oninput="state.passStudentSearch=this.value; clearTimeout(window._pss); window._pss=setTimeout(render,250)"
+        oninput="state.passStudentSearch=this.value; window._pssPos=this.selectionStart; clearTimeout(window._pss); window._pss=setTimeout(render,300)"
         style="width:100%;padding:10px 14px;border:1px solid var(--line);border-radius:10px;font-size:14px">
     </div>
     <div style="background:var(--surface-2);border:0.5px solid #ECE7F5;border-radius:16px;padding:6px 18px">
@@ -5125,7 +5125,17 @@ function renderPassrate(){
       ${mainTab('class','반별')}
       ${mainTab('student','학생별')}
     </div>
-    ${body}`;
+  ${body}`;
+
+  // 검색창 포커스 복원
+  if(p.view==='student'){
+    const inp = el('passStuSearch');
+    if(inp && document.activeElement!==inp && (state.passStudentSearch||'')!==''){
+      inp.focus();
+      const pos = window._pssPos ?? inp.value.length;
+      try{ inp.setSelectionRange(pos,pos); }catch(e){}
+    }
+  }
 }
 
 function emptyRow(){ return '<div style="padding:20px;text-align:center;color:#A99FC4">데이터 없음</div>'; }
