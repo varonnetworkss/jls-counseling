@@ -727,3 +727,4 @@ body.wide-page #content{ max-width:1400px !important; }
   margin:16px 0 8px 14px;
 }
 .sb-sect:first-child{margin-top:6px}
+.grid th.cc, .grid td.cc{ width:1%; white-space:nowrap; }

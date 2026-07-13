@@ -865,6 +865,13 @@ function myAccountCard(){
       </div>
     </div>`;
 }
+function renderMyAccount(){
+  crumbs([{label:'계정 관리'}]);
+  el('content').innerHTML = `
+    <div class="page-head"><h2>계정 관리</h2>
+      <div class="sub">로그인한 본인 계정의 비밀번호를 변경할 수 있습니다.</div></div>
+    ${myAccountCard()}`;
+}
 /* ============================================================================
    5. 로그인 / 로그아웃
    ============================================================================ */
@@ -944,8 +951,8 @@ function buildShell(){
     nav.innerHTML = `
       <div class="sb-sect">선생님</div>
       <div class="sb-item" data-nav="myclasses">${I.dash}<span>내 반 현황</span></div> 
-      <div class="sb-item" data-nav="segments">${I.seg}<span>세그먼트</span></div>`; 
-  } else if(session.role==='assistant'){
+      <div class="sb-item" data-nav="segments">${I.seg}<span>세그먼트</span></div>
+      <div class="sb-item" data-nav="myaccount">${I.acct}<span>계정 관리</span></div>`;
     nav.innerHTML = `
       <div class="sb-sect">조교</div>
      <div class="sb-item" data-nav="start">${I.stu}<span>STaRT 관리</span></div>`;
@@ -1010,6 +1017,7 @@ function render(){
 if(session.role==='teacher'){
     const allowed = (root==='myclasses')
       || (root==='segments')
+      || (root==='myaccount')
       || (root==='branch' && (parts[1]==='teacher' || parts[1]==='class'));
     if(!allowed){ go('myclasses'); return; }
   }
@@ -1048,6 +1056,7 @@ else if(root==='segments-edit'){ setActiveNav('segments-edit'); renderSegmentEdi
   else if(root==='segments'){ setActiveNav('segments'); renderSegmentView(); }
   else if(root==='start'){ setActiveNav('start'); renderStart(); }
   else if(root==='myclasses'){ setActiveNav('myclasses'); renderTeacherHome(); }
+  else if(root==='myaccount'){ setActiveNav('myaccount'); renderMyAccount(); }
   else { go(session.role==='admin'?'admin':'branch'); return; }
   el('content').scrollIntoView({block:'start'});
   window.scrollTo(0,0);
@@ -3523,8 +3532,10 @@ function renderAccounts(){
               <td><span class="code-chip">${esc(u.username)}</span></td>
               <td class="num">${cnt}명</td>
               <td class="cc">
-                <button class="btn sm" onclick="resetAccountPassword('${u.id}')">비번 초기화</button>
-                <button class="btn sm" style="color:var(--neg)" onclick="deleteAccount('${u.id}')">삭제</button>
+                <div style="display:flex;gap:6px;justify-content:center">
+                  <button class="btn sm" onclick="resetAccountPassword('${u.id}')">비번 초기화</button>
+                  <button class="btn sm" style="color:var(--neg)" onclick="deleteAccount('${u.id}')">삭제</button>
+                </div>
               </td>
             </tr>`;
           }).join('')}
