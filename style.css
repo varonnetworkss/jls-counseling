@@ -795,3 +795,7 @@ body.wide-page #content{ max-width:1400px !important; }
   .pass-student-row .pss-name{width:auto !important; flex:1 1 auto !important}
   .pass-student-row .pss-score{flex:1 1 100% !important; order:5}
 }
+@media(max-width:768px){
+  /* 성적 도넛 카드 1열로 */
+  #content [style*="grid-template-columns:1fr 1fr"]{grid-template-columns:1fr !important}
+}
