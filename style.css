@@ -789,3 +789,9 @@ body.wide-page #content{ max-width:1400px !important; }
   .pass-student-row .pss-name{width:auto !important;flex:1 !important}
   .pass-student-row .pss-score{flex-basis:100% !important;order:5;padding-left:0 !important}
 }
+@media(max-width:768px){
+  .pass-student-row{flex-wrap:wrap !important; row-gap:4px !important}
+  .pass-student-row .pss-school{display:none !important}
+  .pass-student-row .pss-name{width:auto !important; flex:1 1 auto !important}
+  .pass-student-row .pss-score{flex:1 1 100% !important; order:5}
+}
