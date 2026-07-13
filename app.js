@@ -4658,6 +4658,22 @@ function passListRow(label, a, onclick, sub){
     </div>
   </div>`;
 }
+/* 반별 행 — 담임 지정 버튼 포함 */
+function passRowWithOverride(classLabel, a){
+  const bad = passRate(a) < 75;
+  const enc = encodeURIComponent(classLabel);
+  return `<div style="display:flex;align-items:center;gap:16px;padding:13px 4px;border-bottom:0.5px solid #EEEBF6">
+    <div onclick="passOpenClass('${enc}')" style="flex:none;cursor:pointer">${passDonut(a,52)}</div>
+    <div onclick="passOpenClass('${enc}')" style="flex:1;min-width:0;cursor:pointer">
+      <div style="font-size:13.5px;font-weight:700;color:#2E2748">${esc(classLabel)}</div>
+      <div style="font-size:11px;color:#A99FC4;margin-top:1px">클릭 → 회차별</div>
+    </div>
+    <div style="font-size:11.5px;color:${bad?'#B05478':'#8A7CB8'};text-align:right;white-space:nowrap">
+      미통과 <b style="color:${bad?'#993556':'#4B2FB8'}">${a.fail}</b> · 미응시 <b style="color:#4B2FB8">${a.noshow}</b>
+    </div>
+    <button class="btn sm" onclick="openTeacherOverride('${enc}')" style="flex:none">담임 지정</button>
+  </div>`;
+}
 
 /* 여러 gubun 버킷을 하나로 합산 */
 function sumAggs(byGubun){
@@ -4669,7 +4685,53 @@ function sumAggs(byGubun){
   });
   return out;
 }
+/* 반의 활용·문법 담임 지정 팝업 */
+function openTeacherOverride(clsEnc){
+  const classLabel = decodeURIComponent(clsEnc);
+  const branchId = session.branchId, semId = state.semId;
+  const cur = {};
+  QAPP_OVERRIDE_GUBUNS.forEach(g=>{
+    const ov = (db.teacherOverrides||[]).find(o=>o.branchId===branchId && o.semesterId===semId && o.classLabel===classLabel && o.gubun===g);
+    cur[g] = ov ? ov.teacher : '';
+  });
+  // 파일 기준 기본 담임 (참고 표시용)
+  const fileTeacher = (db.qappScores||[]).find(s=>s.branchId===branchId && s.semesterId===semId && s.classLabel===classLabel)?.teacher || '';
 
+  openModal(`
+    <div class="modal-head"><div><h3>담임 지정</h3></div>
+      <button class="modal-x" onclick="closeModal()">×</button></div>
+    <div class="modal-body">
+      <div class="pd" style="margin-bottom:14px">${esc(classLabel)}<br>
+        <span style="color:var(--ink-3)">파일 기준 담임: ${esc(fileTeacher.split('/')[0]||'-')} · CHAT·성과는 항상 이 담임입니다.</span></div>
+      ${QAPP_OVERRIDE_GUBUNS.map(g=>`
+        <div class="field" style="margin-bottom:12px">
+          <label>${g==='모범인증'?'문법인증':esc(g)} 담임</label>
+          <input id="ov_${g}" value="${esc(cur[g])}" placeholder="비우면 파일 기준 담임 사용">
+        </div>`).join('')}
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeModal()">취소</button>
+      <button class="btn primary" id="ovSave">저장</button>
+    </div>`);
+  el('ovSave').onclick = ()=> saveTeacherOverride(classLabel);
+}
+
+function saveTeacherOverride(classLabel){
+  const branchId = session.branchId, semId = state.semId;
+  QAPP_OVERRIDE_GUBUNS.forEach(g=>{
+    const val = (el('ov_'+g)?.value||'').trim();
+    let ov = (db.teacherOverrides||[]).find(o=>o.branchId===branchId && o.semesterId===semId && o.classLabel===classLabel && o.gubun===g);
+    if(val){
+      if(ov){ ov.teacher = val; }
+      else { (db.teacherOverrides||(db.teacherOverrides=[])).push({id:uid('ov'),branchId,semesterId:semId,classLabel,gubun:g,teacher:val}); }
+    } else if(ov){
+      // 비우면 오버라이드 제거
+      db.teacherOverrides = db.teacherOverrides.filter(o=>o.id!==ov.id);
+    }
+  });
+  showSaving('담임 저장 중…');
+  saveDB().then(ok=>{ hideSaving(); toast(ok?'담임이 저장되었습니다':'저장 실패, 다시 시도하세요', ok?'ok':'err'); closeModal(); render(); });
+}
 function renderPassrate(){
   const branchId = session.branchId, semId = state.semId;
   const p = passState();
@@ -4727,7 +4789,7 @@ function renderPassrate(){
     const rows = Object.keys(result).map(k=>({k,a:sumAggs(result[k]),label:meta[k].label}))
       .filter(x=>x.a.total).sort((x,y)=>passRate(x.a)-passRate(y.a));
     body = `<div style="background:var(--surface-2);border:0.5px solid #ECE7F5;border-radius:16px;padding:6px 18px">
-      ${rows.map(x=>passListRow(x.label,x.a,`passOpenClass('${encodeURIComponent(x.label)}')`,'클릭 → 회차별')).join('')||'<div style="padding:20px;text-align:center;color:#A99FC4">데이터 없음</div>'}
+      ${rows.map(x=>passRowWithOverride(x.label,x.a)).join('')||'<div style="padding:20px;text-align:center;color:#A99FC4">데이터 없음</div>'}
     </div>`;
   }
   else if(p.view==='lesson'){
