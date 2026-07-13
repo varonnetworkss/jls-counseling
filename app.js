@@ -4680,42 +4680,8 @@ function passTeacherRow(teacher, sortAgg, byGubun){
   if(!state.passOpenTeachers) state.passOpenTeachers = {};
   const open = !!state.passOpenTeachers[teacher];
   const bad = passRate(sortAgg) < 75;
-  const branchId = session.branchId, semId = state.semId;
+const branchId = session.branchId, semId = state.semId;
 
-  /* 특정 반·구분·회차의 학생별 상태 */
-function passLessonStudents(branchId, semId, classLabel, gubun, hoi){
-  const wd = withdrawnCodes(branchId, semId);
-  // 그 반 전체 학생
-  const codes = [...new Set((db.qappScores||[])
-    .filter(s=>s.branchId===branchId && s.semesterId===semId && s.classLabel===classLabel && s.studentCode && !wd.has(s.studentCode))
-    .map(s=>s.studentCode))];
-  const nameOf = {};
-  (db.qappScores||[]).forEach(s=>{ if(s.studentCode && !nameOf[s.studentCode]) nameOf[s.studentCode]=s.studentName; });
-
-  return codes.map(code=>{
-    const recs = (db.qappScores||[]).filter(s=>s.branchId===branchId && s.semesterId===semId && s.classLabel===classLabel && s.studentCode===code && s.gubun===gubun && s.hoi===hoi);
-    const {cat, reserved} = classifyExam(recs);
-    return {code, name:nameOf[code]||code, cat, reserved};
-  }).sort((a,b)=>{
-    const order={fail:0,noshow:1,repass:2,pass:3};
-    return order[a.cat]-order[b.cat];  // 문제 학생 위로
-  });
-}
-
-/* 학생 상태 행 (회차별 학생 목록용) */
-function passStudentStatusRow(s){
-  const badge = {
-    pass:   ['통과','#EEF1FE','#4B2FB8'],
-    repass: ['재시험 통과','#F0ECFA','#7C5CD9'],
-    fail:   ['미통과','#FBEAF0','#B05478'],
-    noshow: ['미응시','#F1EFE8','#8A857A'],
-  }[s.cat];
-  return `<div style="display:flex;align-items:center;gap:12px;padding:12px 4px;border-bottom:0.5px solid #EEEBF6">
-    <div style="flex:1;font-size:13.5px;font-weight:700;color:#2E2748">${esc(s.name)}</div>
-    ${s.reserved?`<span style="font-size:10.5px;color:#7C5CD9;background:#F1ECFC;padding:3px 8px;border-radius:6px">예약</span>`:''}
-    <span style="font-size:11.5px;font-weight:700;color:${badge[2]};background:${badge[1]};padding:4px 11px;border-radius:8px">${badge[0]}</span>
-  </div>`;
-}
   // 이 담임의 담당 반 목록
   const classes = [...new Set(activeScores(branchId, semId)
     .filter(s=> resolveQTeacher(branchId, semId, s.classLabel, s.gubun, s.teacher)===teacher)
@@ -4772,6 +4738,36 @@ function togglePassTeacher(tEnc){
   if(!state.passOpenTeachers) state.passOpenTeachers = {};
   state.passOpenTeachers[t] = !state.passOpenTeachers[t];
   render();
+}
+/* 특정 반·구분·회차의 학생별 상태 */
+function passLessonStudents(branchId, semId, classLabel, gubun, hoi){
+  const wd = withdrawnCodes(branchId, semId);
+  const codes = [...new Set((db.qappScores||[])
+    .filter(s=>s.branchId===branchId && s.semesterId===semId && s.classLabel===classLabel && s.studentCode && !wd.has(s.studentCode))
+    .map(s=>s.studentCode))];
+  const nameOf = {};
+  (db.qappScores||[]).forEach(s=>{ if(s.studentCode && !nameOf[s.studentCode]) nameOf[s.studentCode]=s.studentName; });
+  return codes.map(code=>{
+    const recs = (db.qappScores||[]).filter(s=>s.branchId===branchId && s.semesterId===semId && s.classLabel===classLabel && s.studentCode===code && s.gubun===gubun && s.hoi===hoi);
+    const {cat, reserved} = classifyExam(recs);
+    return {code, name:nameOf[code]||code, cat, reserved};
+  }).sort((a,b)=>{
+    const order={fail:0,noshow:1,repass:2,pass:3};
+    return order[a.cat]-order[b.cat];
+  });
+}
+function passStudentStatusRow(s){
+  const badge = {
+    pass:   ['통과','#EEF1FE','#4B2FB8'],
+    repass: ['재시험 통과','#F0ECFA','#7C5CD9'],
+    fail:   ['미통과','#FBEAF0','#B05478'],
+    noshow: ['미응시','#F1EFE8','#8A857A'],
+  }[s.cat];
+  return `<div style="display:flex;align-items:center;gap:12px;padding:12px 4px;border-bottom:0.5px solid #EEEBF6">
+    <div style="flex:1;font-size:13.5px;font-weight:700;color:#2E2748">${esc(s.name)}</div>
+    ${s.reserved?`<span style="font-size:10.5px;color:#7C5CD9;background:#F1ECFC;padding:3px 8px;border-radius:6px">예약</span>`:''}
+    <span style="font-size:11.5px;font-weight:700;color:${badge[2]};background:${badge[1]};padding:4px 11px;border-radius:8px">${badge[0]}</span>
+  </div>`;
 }
 /* 여러 gubun 버킷을 하나로 합산 */
 function sumAggs(byGubun){
