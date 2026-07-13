@@ -778,3 +778,7 @@ body.wide-page #content{ max-width:1400px !important; }
   .kpi .kv .num{font-size:22px}
   .kpi .kl{font-size:11px}
 }
+@media(max-width:900px){
+  .sidebar{display:flex !important;transform:translateX(-100%)}
+  .sidebar.open{transform:translateX(0)}
+}
