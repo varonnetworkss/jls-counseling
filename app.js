@@ -4674,7 +4674,70 @@ function passRowWithOverride(classLabel, a){
     <button class="btn sm" onclick="openTeacherOverride('${enc}')" style="flex:none">담임 지정</button>
   </div>`;
 }
+/* 담임 행 — 클릭하면 반 목록 + 시험구분별 상세 펼침 */
+function passTeacherRow(teacher, sortAgg, byGubun){
+  if(!state.passOpenTeachers) state.passOpenTeachers = {};
+  const open = !!state.passOpenTeachers[teacher];
+  const bad = passRate(sortAgg) < 75;
+  const branchId = session.branchId, semId = state.semId;
 
+  // 이 담임의 담당 반 목록
+  const classes = [...new Set(activeScores(branchId, semId)
+    .filter(s=> resolveQTeacher(branchId, semId, s.classLabel, s.gubun, s.teacher)===teacher)
+    .map(s=>s.classLabel))];
+
+  const head = `<div onclick="togglePassTeacher('${encodeURIComponent(teacher)}')" style="display:flex;align-items:center;gap:16px;padding:13px 4px;cursor:pointer;${open?'':'border-bottom:0.5px solid #EEEBF6'}">
+    <div style="flex:none">${passDonut(sortAgg,52)}</div>
+    <div style="flex:1;min-width:0">
+      <div style="font-size:13.5px;font-weight:700;color:#2E2748">${esc(teacher)}</div>
+      <div style="font-size:11px;color:#A99FC4;margin-top:1px">담임 · 반 ${classes.length}개 ${open?'▲':'▼'}</div>
+    </div>
+    <div style="font-size:11.5px;color:${bad?'#B05478':'#8A7CB8'};text-align:right;white-space:nowrap">
+      미통과 <b style="color:${bad?'#993556':'#4B2FB8'}">${sortAgg.fail}</b> · 미응시 <b style="color:#4B2FB8">${sortAgg.noshow}</b>
+    </div>
+  </div>`;
+
+  if(!open) return head;
+
+  // 반 이름 태그 (레벨 라벨만 짧게)
+  const shortName = c=>{ const m=c.match(/\[([^\]]+)\]/); return m?m[1]:c; };
+  const tags = classes.map(c=>`<span style="font-size:11.5px;background:#F1ECFC;color:#5B4B8A;padding:4px 10px;border-radius:8px">${esc(shortName(c))}</span>`).join('');
+
+  // 시험구분별 표
+  const gLabel = g=> g==='모범인증'?'문법인증':g;
+  const rowsHtml = QAPP_GUBUNS.map(g=>{
+    const a = byGubun[g];
+    if(!a || !a.total) return '';
+    const gbad = passRate(a)<75;
+    return `<tr style="border-top:0.5px solid #EEEBF6">
+      <td style="padding:6px 0;color:${gbad?'#B05478':'#3D3560'};font-weight:700">${esc(gLabel(g))}</td>
+      <td style="text-align:right">${a.total}</td>
+      <td style="text-align:right;color:#7C5CD9">${a.pass+a.repass}</td>
+      <td style="text-align:right;color:${gbad?'#993556':'#B05478'};${gbad?'font-weight:700':''}">${a.fail}</td>
+      <td style="text-align:right;color:#A99FC4">${a.noshow}</td>
+    </tr>`;
+  }).join('');
+
+  const panel = `<div style="padding:4px 4px 16px;background:#FAF8FE;border-radius:0 0 12px 12px;margin-bottom:6px;border-bottom:0.5px solid #EEEBF6">
+    <div style="padding:0 12px 12px">
+      <div style="font-size:11px;color:#A99FC4;margin-bottom:6px">담당 반 ${classes.length}개</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">${tags}</div>
+      <div style="font-size:11px;color:#A99FC4;margin-bottom:6px">시험구분별</div>
+      <table style="width:100%;font-size:12px;border-collapse:collapse">
+        <tr style="color:#A99FC4;font-size:10.5px"><td style="padding:2px 0">구분</td><td style="text-align:right">총</td><td style="text-align:right">통과</td><td style="text-align:right">미통과</td><td style="text-align:right">미응시</td></tr>
+        ${rowsHtml}
+      </table>
+    </div>
+  </div>`;
+
+  return head + panel;
+}
+function togglePassTeacher(tEnc){
+  const t = decodeURIComponent(tEnc);
+  if(!state.passOpenTeachers) state.passOpenTeachers = {};
+  state.passOpenTeachers[t] = !state.passOpenTeachers[t];
+  render();
+}
 /* 여러 gubun 버킷을 하나로 합산 */
 function sumAggs(byGubun){
   const out = emptyAgg();
@@ -4776,12 +4839,17 @@ function renderPassrate(){
     <div style="margin-top:14px;font-size:11.5px;color:#A99FC4;text-align:center">시험구분 카드를 클릭하면 담임별로 볼 수 있습니다.</div>`;
   }
   else if(p.view==='teacher'){
-    const {result, meta} = aggregateScores(branchId, semId, {groupBy:'teacher', gubun:p.gubun});
-    const rows = Object.keys(result).map(k=>({k,a:result[k][p.gubun],label:meta[k].label}))
-      .filter(x=>x.a&&x.a.total).sort((x,y)=>passRate(x.a)-passRate(y.a));
-    crumbLine = `<div style="margin-bottom:14px;font-size:12.5px;color:#6B5D9E"><span onclick="setPassView('branch')" style="cursor:pointer;color:#7C5CFF">← 분원 전체</span> · <b>${esc(p.gubun)}</b> · 담임별 (통과율 낮은 순)</div>`;
+    // 담임별 전체 집계 (구분 필터 없이 — 담임 안에서 구분별로 보여줌)
+    const {result, meta} = aggregateScores(branchId, semId, {groupBy:'teacher'});
+    // 정렬 기준은 진입한 구분(p.gubun)의 통과율. 없으면 전체.
+    const rows = Object.keys(result).map(k=>{
+      const sortAgg = p.gubun ? result[k][p.gubun] : sumAggs(result[k]);
+      return {k, byGubun:result[k], sortAgg, label:meta[k].label};
+    }).filter(x=>x.sortAgg && x.sortAgg.total).sort((x,y)=>passRate(x.sortAgg)-passRate(y.sortAgg));
+    const gLabel = p.gubun ? (p.gubun==='모범인증'?'문법인증':p.gubun) : '전체';
+    crumbLine = `<div style="margin-bottom:14px;font-size:12.5px;color:#6B5D9E"><span onclick="setPassView('branch')" style="cursor:pointer;color:#7C5CFF">← 분원 전체</span> · <b>${esc(gLabel)}</b> · 담임별 (통과율 낮은 순)</div>`;
     body = `<div style="background:var(--surface-2);border:0.5px solid #ECE7F5;border-radius:16px;padding:6px 18px">
-      ${rows.map(x=>passListRow(x.label,x.a,'','담임')).join('')||'<div style="padding:20px;text-align:center;color:#A99FC4">데이터 없음</div>'}
+      ${rows.map(x=>passTeacherRow(x.label, x.sortAgg, x.byGubun)).join('')||'<div style="padding:20px;text-align:center;color:#A99FC4">데이터 없음</div>'}
     </div>`;
   }
   else if(p.view==='classlist'){
