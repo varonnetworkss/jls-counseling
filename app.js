@@ -4760,6 +4760,82 @@ function renderPassrate(){
     ${crumbLine}
     ${body}`;
 }
+/* ========================================================================
+   STaRT 시험 통과율 — 업로드 파서
+   ======================================================================== */
+function importQappScores(file){
+  readTable(file, async rows=>{
+    if(rows.length<2){ toast('데이터가 없습니다','err'); return; }
+    const HDR = {
+      code:['학생코드','회원코드','코드'],
+      name:['학생이름','이름','학생명'],
+      cls:['수강반','반'],
+      teacher:['담임선생님','담임','선생님'],
+      hoi:['회차'],
+      gubun:['시험구분','구분'],
+      lesson:['단원명','단원','레슨'],
+      date:['시험일자','시험일','일자'],
+      baejeom:['배점'],
+      jumsu:['점수'],
+      eungsi:['응시'],
+      tonggwa:['통과'],
+      yeyak:['예약일/시간','예약','예약일'],
+    };
+    let idx=null;
+    for(let i=0;i<Math.min(3,rows.length-1);i++){
+      const cand = mapHeader(rows[i].map(h=>String(h).trim()), HDR);
+      if(cand.code>=0 && cand.gubun>=0 && cand.tonggwa>=0){ idx=cand; rows=rows.slice(i); break; }
+    }
+    if(!idx){ toast('학생코드·시험구분·통과 열을 찾지 못했습니다','err'); return; }
+
+    const branchId = session.branchId, semId = state.semId;
+    const existing = new Set((db.qappScores||[])
+      .filter(s=>s.branchId===branchId && s.semesterId===semId)
+      .map(s=>s.fingerprint));
+
+    let added=0, dup=0, noCode=0;
+    const g = (r,k)=> idx[k]>=0 ? String(r[idx[k]]??'').trim() : '';
+
+    rows.slice(1).forEach(r=>{
+      const code = g(r,'code');
+      if(!code){ noCode++; return; }
+      const gubun = g(r,'gubun');
+      if(!QAPP_GUBUNS.includes(gubun)) return;
+
+      const rec = {
+        studentCode: code,
+        studentName: g(r,'name'),
+        classLabel:  g(r,'cls'),
+        gubun,
+        hoi:      g(r,'hoi'),
+        lesson:   g(r,'lesson'),
+        teacher:  g(r,'teacher'),
+        jumsu:    parseFloat(g(r,'jumsu'))||0,
+        baejeom:  parseFloat(g(r,'baejeom'))||0,
+        eungsi:   g(r,'eungsi'),
+        tonggwa:  g(r,'tonggwa'),
+        yeyak:    g(r,'yeyak'),
+        examDate: g(r,'date'),
+      };
+      const fp = [code,gubun,rec.hoi,rec.examDate,rec.jumsu,rec.eungsi,rec.tonggwa].join('~');
+      if(existing.has(fp)){ dup++; return; }
+      existing.add(fp);
+      rec.id = uid('qs');
+      rec.branchId = branchId;
+      rec.semesterId = semId;
+      rec.fingerprint = fp;
+      (db.qappScores || (db.qappScores=[])).push(rec);
+      added++;
+    });
+
+    showSaving('성적 저장 중… (잠시만요)');
+    const ok = await saveDB();
+    hideSaving();
+    if(ok) toast(`✅ 성적 ${added}건 추가${dup?`, 중복 ${dup}`:''}${noCode?`, 코드없음(퇴원) ${noCode}`:''}`,'ok');
+    else toast('❌ 저장 실패 — 다시 업로드해 주세요','err');
+    render();
+  });
+}
 /* ---- 메인 렌더 ---- */
 async function renderStart(){
   crumbs([{label:'STaRT 외출·시험 관리'}]);
