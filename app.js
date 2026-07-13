@@ -4678,7 +4678,7 @@ function passState(){
   if(!state.pass) state.pass = {view:'branch', gubun:'', classLabel:''};
   return state.pass;
 }
-function setPassView(v){ const p=passState(); p.view=v; p.classLabel=''; render(); }  // gubun 필터는 유지
+function setPassView(v){ const p=passState(); p.view=v; p.gubun=''; p.classLabel=''; render(); }
 function setPassGubun(g){ const p=passState(); p.gubun=g; p.view='class'; render(); }  // 도넛 클릭 → 그 구분 반별로
 function setPassGubunFilter(g){ const p=passState(); p.gubun=g; p.classLabel=''; render(); }  // 필터 칩
 function passOpenClass(clsEnc){ const p=passState(); p.classLabel=decodeURIComponent(clsEnc); p.view='lesson'; render(); }
@@ -5057,7 +5057,7 @@ function renderPassrateHub(){
       <div style="font-size:15px;font-weight:700;color:#2E2748;margin-bottom:2px">${esc(b.name)}</div>
       <div style="font-size:11px;color:#A99FC4;margin-bottom:14px">클릭해서 상세 보기</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        ${cell('CHAT')}${cell('성과')}${cell('활용')}${cell('모범인증')}
+        ${cell('CHAT')}${cell('성과')}${cell('활용')}${cell('문법인증')}
       </div>
       <div style="text-align:right;margin-top:12px;font-size:11.5px;color:#7C5CD9">상세 ›</div>
     </div>`;
