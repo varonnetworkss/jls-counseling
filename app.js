@@ -4465,7 +4465,11 @@ function withdrawnCodes(branchId, semId){
   });
   return set;
 }
-
+/* 담임 이름 정규화 — 같은 한글이름이면 영어이름 있는 쪽으로 통일 */
+function normTeacher(t){
+  if(!t) return t;
+  return String(t).split('/')[0].trim();  // "강라현/Sonya" → "강라현"
+}
 /* 반+구분에 대해 실제 담임 결정: 활용·문법이면 오버라이드 우선 */
 function resolveQTeacher(branchId, semId, classLabel, gubun, fileTeacher){
   if(QAPP_OVERRIDE_GUBUNS.includes(gubun)){
@@ -4546,6 +4550,19 @@ function enrollDateOf(branchId, semId){
   });
   return map;
 }
+/* 한글이름 → 대표 표시명(영어 있는 형태 우선) */
+function teacherDisplayMap(branchId, semId){
+  const map = {};  // 한글 → 대표 전체이름
+  (db.qappScores||[]).forEach(s=>{
+    if(s.branchId!==branchId || s.semesterId!==semId || !s.teacher) return;
+    const key = normTeacher(s.teacher);
+    // 영어이름 있는 형태(/뒤가 '-'나 빈값 아님)를 우선 저장
+    const hasEng = s.teacher.includes('/') && !/\/\s*-?\s*$/.test(s.teacher);
+    if(!map[key] || (hasEng && !map[key].includes('/'))) map[key] = s.teacher;
+    else if(!map[key]) map[key] = s.teacher;
+  });
+  return map;
+}
 /* 핵심 집계 엔진.
    groupBy: 'branch' | 'teacher' | 'class' | 'lesson' | 'student'
    filter:  {gubun, classLabel} 로 범위 좁히기 (옵션)
@@ -4553,7 +4570,8 @@ function enrollDateOf(branchId, semId){
 function aggregateScores(branchId, semId, opts={}){
   const scores = activeScores(branchId, semId);
   const classSets = classExamSets(scores);
-  const enrollMap = enrollDateOf(branchId, semId);   // code -> 입학일
+  const enrollMap = enrollDateOf(branchId, semId);
+  const tDisplay = teacherDisplayMap(branchId, semId);
   // 반+구분+회차 -> 그 시험이 치러진 날짜 (누군가 응시한 날)
   const examDateMap = {};  // classLabel|gubun|hoi -> examDate
   scores.forEach(s=>{
@@ -4608,14 +4626,15 @@ function aggregateScores(branchId, semId, opts={}){
         let gkey, glabel;
         if(groupBy==='branch'){ gkey='ALL'; glabel='분원 전체'; }
         else if(groupBy==='teacher'){
-          gkey = resolveQTeacher(branchId, semId, classLabel, gubun, stuMeta[code]?.fileTeacher||'');
-          glabel = gkey;
+          const rawT = resolveQTeacher(branchId, semId, classLabel, gubun, stuMeta[code]?.fileTeacher||'');
+          gkey = normTeacher(rawT);   // 한글이름으로 통합
+          glabel = gkey;              // 표시명은 아래에서 대표명으로 교체
         }
         else if(groupBy==='class'){ gkey=classLabel; glabel=classLabel; }
         else if(groupBy==='lesson'){ gkey=gubun+'|'+hoi; glabel=hoi+'회'; }
         else if(groupBy==='student'){ gkey=code; glabel=stuMeta[code]?.name||code; }
 
-        if(!result[gkey]){ result[gkey]={}; QAPP_GUBUNS.forEach(g=>result[gkey][g]=emptyAgg()); meta[gkey]={label:glabel}; }
+        if(!result[gkey]){ result[gkey]={}; QAPP_GUBUNS.forEach(g=>result[gkey][g]=emptyAgg()); meta[gkey]={label: groupBy==='teacher' ? (tDisplay[gkey]||glabel) : glabel}; }
         const a = result[gkey][gubun];
         a.total++;
         a[cat]++;
