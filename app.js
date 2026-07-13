@@ -4480,9 +4480,22 @@ function resolveQTeacher(branchId, semId, classLabel, gubun, fileTeacher){
 /* 현재 분원·학기의 유효 성적 (퇴원생 제외) */
 function activeScores(branchId, semId){
   const wd = withdrawnCodes(branchId, semId);
+  const validClasses = qappValidClasses(branchId, semId);
   return (db.qappScores||[]).filter(s=>
     s.branchId===branchId && s.semesterId===semId &&
-    s.studentCode && !wd.has(s.studentCode));
+    s.studentCode && !wd.has(s.studentCode) &&
+    validClasses.has(s.classLabel));   // 홈페이지에 등록된 정규반만 (내신반 등 제외)
+}
+
+/* 홈페이지 semesterRecords의 className = 큐앱 classLabel. 여기 있는 반만 정규반 */
+function qappValidClasses(branchId, semId){
+  const set = new Set();
+  (db.semesterRecords||[]).forEach(r=>{
+    if(r.branchId===branchId && r.semesterId===semId && r.className){
+      set.add(r.className);
+    }
+  });
+  return set;
 }
 
 /* 반 단위 역산: 반 -> Set("구분|회차") = 그 반이 봐야 할 시험 목록 */
@@ -4721,11 +4734,11 @@ function passTeacherRow(teacher, sortAgg, byGubun){
     if(!a || !a.total) return '';
     const gbad = passRate(a)<75;
     return `<tr style="border-top:0.5px solid #EEEBF6">
-      <td style="padding:6px 0;color:${gbad?'#B05478':'#3D3560'};font-weight:700">${esc(gLabel(g))}</td>
-      <td style="text-align:right">${a.total}</td>
-      <td style="text-align:right;color:#7C5CD9">${a.pass+a.repass}</td>
-      <td style="text-align:right;color:${gbad?'#993556':'#B05478'};${gbad?'font-weight:700':''}">${a.fail}</td>
-      <td style="text-align:right;color:#A99FC4">${a.noshow}</td>
+      <td style="padding:6px 0;color:${gbad?'#B05478':'#3D3560'};font-weight:700;text-align:left">${esc(gLabel(g))}</td>
+      <td style="text-align:center">${a.total}</td>
+      <td style="text-align:center;color:#7C5CD9">${a.pass+a.repass}</td>
+      <td style="text-align:center;color:${gbad?'#993556':'#B05478'};${gbad?'font-weight:700':''}">${a.fail}</td>
+      <td style="text-align:center;color:#A99FC4">${a.noshow}</td>
     </tr>`;
   }).join('');
 
@@ -4734,8 +4747,14 @@ function passTeacherRow(teacher, sortAgg, byGubun){
       <div style="font-size:11px;color:#A99FC4;margin-bottom:6px">반 선택 (담당 ${classes.length}개)</div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">${tags}</div>
       <div style="font-size:11px;color:#A99FC4;margin-bottom:6px">${selClass?esc(shortName(selClass))+' 반':'전체'} · 시험구분별</div>
-      <table style="width:100%;font-size:12px;border-collapse:collapse">
-        <tr style="color:#A99FC4;font-size:10.5px"><td style="padding:2px 0">구분</td><td style="text-align:right">총</td><td style="text-align:right">통과</td><td style="text-align:right">미통과</td><td style="text-align:right">미응시</td></tr>
+      <table style="width:100%;font-size:12px;border-collapse:collapse;table-layout:fixed">
+        <tr style="color:#A99FC4;font-size:10.5px">
+          <td style="padding:2px 0;width:28%;text-align:left">구분</td>
+          <td style="text-align:center;width:18%">총</td>
+          <td style="text-align:center;width:18%">통과</td>
+          <td style="text-align:center;width:18%">미통과</td>
+          <td style="text-align:center;width:18%">미응시</td>
+        </tr>
         ${rowsHtml||'<tr><td colspan="5" style="padding:12px;text-align:center;color:#A99FC4">데이터 없음</td></tr>'}
       </table>
     </div>
@@ -4757,10 +4776,8 @@ function togglePassTeacher(tEnc){
 }
 /* 특정 반·구분·회차의 학생별 상태 */
 function passLessonStudents(branchId, semId, classLabel, gubun, hoi){
-  const wd = withdrawnCodes(branchId, semId);
-  const codes = [...new Set((db.qappScores||[])
-    .filter(s=>s.branchId===branchId && s.semesterId===semId && s.classLabel===classLabel && s.studentCode && !wd.has(s.studentCode))
-    .map(s=>s.studentCode))];
+  const scores = activeScores(branchId, semId).filter(s=>s.classLabel===classLabel);
+  const codes = [...new Set(scores.map(s=>s.studentCode))];
   const nameOf = {};
   (db.qappScores||[]).forEach(s=>{ if(s.studentCode && !nameOf[s.studentCode]) nameOf[s.studentCode]=s.studentName; });
   return codes.map(code=>{
