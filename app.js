@@ -4591,10 +4591,11 @@ function passState(){
   if(!state.pass) state.pass = {view:'branch', gubun:'', classLabel:''};
   return state.pass;
 }
-function setPassView(v){ const p=passState(); p.view=v; p.gubun=''; p.classLabel=''; render(); }
-function setPassGubun(g){ const p=passState(); p.gubun=g; p.view='teacher'; render(); }
+function setPassView(v){ const p=passState(); p.view=v; p.classLabel=''; render(); }  // gubun 필터는 유지
+function setPassGubun(g){ const p=passState(); p.gubun=g; p.view='class'; render(); }  // 도넛 클릭 → 그 구분 반별로
+function setPassGubunFilter(g){ const p=passState(); p.gubun=g; p.classLabel=''; render(); }  // 필터 칩
 function passOpenClass(clsEnc){ const p=passState(); p.classLabel=decodeURIComponent(clsEnc); p.view='lesson'; render(); }
-function passOpenStudents(clsEnc){ const p=passState(); p.classLabel=decodeURIComponent(clsEnc); p.view='student'; render(); }
+function passOpenLessonStudents(clsEnc, g, h){ const p=passState(); p.classLabel=decodeURIComponent(clsEnc); p.lessonGubun=g; p.lessonHoi=h; p.view='lessonStudent'; render(); }
 
 function passDonut(a, size){
   const rate = passRate(a);
@@ -4681,6 +4682,40 @@ function passTeacherRow(teacher, sortAgg, byGubun){
   const bad = passRate(sortAgg) < 75;
   const branchId = session.branchId, semId = state.semId;
 
+  /* 특정 반·구분·회차의 학생별 상태 */
+function passLessonStudents(branchId, semId, classLabel, gubun, hoi){
+  const wd = withdrawnCodes(branchId, semId);
+  // 그 반 전체 학생
+  const codes = [...new Set((db.qappScores||[])
+    .filter(s=>s.branchId===branchId && s.semesterId===semId && s.classLabel===classLabel && s.studentCode && !wd.has(s.studentCode))
+    .map(s=>s.studentCode))];
+  const nameOf = {};
+  (db.qappScores||[]).forEach(s=>{ if(s.studentCode && !nameOf[s.studentCode]) nameOf[s.studentCode]=s.studentName; });
+
+  return codes.map(code=>{
+    const recs = (db.qappScores||[]).filter(s=>s.branchId===branchId && s.semesterId===semId && s.classLabel===classLabel && s.studentCode===code && s.gubun===gubun && s.hoi===hoi);
+    const {cat, reserved} = classifyExam(recs);
+    return {code, name:nameOf[code]||code, cat, reserved};
+  }).sort((a,b)=>{
+    const order={fail:0,noshow:1,repass:2,pass:3};
+    return order[a.cat]-order[b.cat];  // 문제 학생 위로
+  });
+}
+
+/* 학생 상태 행 (회차별 학생 목록용) */
+function passStudentStatusRow(s){
+  const badge = {
+    pass:   ['통과','#EEF1FE','#4B2FB8'],
+    repass: ['재시험 통과','#F0ECFA','#7C5CD9'],
+    fail:   ['미통과','#FBEAF0','#B05478'],
+    noshow: ['미응시','#F1EFE8','#8A857A'],
+  }[s.cat];
+  return `<div style="display:flex;align-items:center;gap:12px;padding:12px 4px;border-bottom:0.5px solid #EEEBF6">
+    <div style="flex:1;font-size:13.5px;font-weight:700;color:#2E2748">${esc(s.name)}</div>
+    ${s.reserved?`<span style="font-size:10.5px;color:#7C5CD9;background:#F1ECFC;padding:3px 8px;border-radius:6px">예약</span>`:''}
+    <span style="font-size:11.5px;font-weight:700;color:${badge[2]};background:${badge[1]};padding:4px 11px;border-radius:8px">${badge[0]}</span>
+  </div>`;
+}
   // 이 담임의 담당 반 목록
   const classes = [...new Set(activeScores(branchId, semId)
     .filter(s=> resolveQTeacher(branchId, semId, s.classLabel, s.gubun, s.teacher)===teacher)
@@ -4826,56 +4861,81 @@ function renderPassrate(){
     return;
   }
 
-  const tab = (v,label)=>`<span onclick="setPassView('${v}')" style="font-size:12.5px;padding:6px 14px;border-radius:999px;cursor:pointer;${(p.view===v||(v==='branch'&&p.view==='teacher'))?'background:#7C5CFF;color:#fff':'border:0.5px solid var(--line);color:#6B5D9E'}">${label}</span>`;
+  const gLabel = g=> g==='모범인증'?'문법인증':g;
 
-  let crumbLine='', body='';
+  // 메인 탭
+  const mainTab = (v,label)=>`<span onclick="setPassView('${v}')" style="font-size:12.5px;padding:6px 14px;border-radius:999px;cursor:pointer;${p.view===v?'background:#7C5CFF;color:#fff':'border:0.5px solid var(--line);color:#6B5D9E'}">${label}</span>`;
 
+  // 시험구분 필터 칩 (담임별/반별/학생별에서만)
+  const filterChips = ()=>{
+    const chip = (g,label)=>`<span onclick="setPassGubunFilter('${g}')" style="font-size:11.5px;padding:5px 12px;border-radius:999px;cursor:pointer;${p.gubun===g?'background:#B8A6F0;color:#fff':'border:0.5px solid var(--line);color:#8A7CB8'}">${label}</span>`;
+    return `<div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">
+      ${chip('','전체')}
+      ${QAPP_GUBUNS.map(g=>chip(g,gLabel(g))).join('')}
+    </div>`;
+  };
+
+  let body='';
+
+  // ===== 분원 전체 =====
   if(p.view==='branch'){
     const {result} = aggregateScores(branchId, semId, {groupBy:'branch'});
     const agg = result['ALL']||{};
     body = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
       ${QAPP_GUBUNS.map(g=> agg[g]&&agg[g].total ? passBigCard(g, agg[g]) : '').join('')}
     </div>
-    <div style="margin-top:14px;font-size:11.5px;color:#A99FC4;text-align:center">시험구분 카드를 클릭하면 담임별로 볼 수 있습니다.</div>`;
+    <div style="margin-top:14px;font-size:11.5px;color:#A99FC4;text-align:center">시험구분 카드를 클릭하면 그 시험 기준으로 반별을 볼 수 있습니다.</div>`;
   }
+
+  // ===== 담임별 =====
   else if(p.view==='teacher'){
-    // 담임별 전체 집계 (구분 필터 없이 — 담임 안에서 구분별로 보여줌)
     const {result, meta} = aggregateScores(branchId, semId, {groupBy:'teacher'});
-    // 정렬 기준은 진입한 구분(p.gubun)의 통과율. 없으면 전체.
     const rows = Object.keys(result).map(k=>{
-      const sortAgg = p.gubun ? result[k][p.gubun] : sumAggs(result[k]);
-      return {k, byGubun:result[k], sortAgg, label:meta[k].label};
-    }).filter(x=>x.sortAgg && x.sortAgg.total).sort((x,y)=>passRate(x.sortAgg)-passRate(y.sortAgg));
-    const gLabel = p.gubun ? (p.gubun==='모범인증'?'문법인증':p.gubun) : '전체';
-    crumbLine = `<div style="margin-bottom:14px;font-size:12.5px;color:#6B5D9E"><span onclick="setPassView('branch')" style="cursor:pointer;color:#7C5CFF">← 분원 전체</span> · <b>${esc(gLabel)}</b> · 담임별 (통과율 낮은 순)</div>`;
-    body = `<div style="background:var(--surface-2);border:0.5px solid #ECE7F5;border-radius:16px;padding:6px 18px">
-      ${rows.map(x=>passTeacherRow(x.label, x.sortAgg, x.byGubun)).join('')||'<div style="padding:20px;text-align:center;color:#A99FC4">데이터 없음</div>'}
+      const a = p.gubun ? result[k][p.gubun] : sumAggs(result[k]);
+      return {k, a, byGubun:result[k], label:meta[k].label};
+    }).filter(x=>x.a && x.a.total).sort((x,y)=>passRate(x.a)-passRate(y.a));
+    body = filterChips() + `<div style="background:var(--surface-2);border:0.5px solid #ECE7F5;border-radius:16px;padding:6px 18px">
+      ${rows.map(x=>passTeacherRow(x.label, x.a, x.byGubun)).join('')||emptyRow()}
     </div>`;
   }
-  else if(p.view==='classlist'){
-    const {result, meta} = aggregateScores(branchId, semId, {groupBy:'class'});
-    const rows = Object.keys(result).map(k=>({k,a:sumAggs(result[k]),label:meta[k].label}))
-      .filter(x=>x.a.total).sort((x,y)=>passRate(x.a)-passRate(y.a));
-    body = `<div style="background:var(--surface-2);border:0.5px solid #ECE7F5;border-radius:16px;padding:6px 18px">
-      ${rows.map(x=>passRowWithOverride(x.label,x.a)).join('')||'<div style="padding:20px;text-align:center;color:#A99FC4">데이터 없음</div>'}
+
+  // ===== 반별 =====
+  else if(p.view==='class'){
+    const {result, meta} = aggregateScores(branchId, semId, {groupBy:'class', gubun:p.gubun});
+    const rows = Object.keys(result).map(k=>({k, a: p.gubun?result[k][p.gubun]:sumAggs(result[k]), label:meta[k].label}))
+      .filter(x=>x.a && x.a.total).sort((x,y)=>passRate(x.a)-passRate(y.a));
+    body = filterChips() + `<div style="background:var(--surface-2);border:0.5px solid #ECE7F5;border-radius:16px;padding:6px 18px">
+      ${rows.map(x=>passListRow(x.label,x.a,`passOpenClass('${encodeURIComponent(x.label)}')`,'클릭 → 회차별')).join('')||emptyRow()}
     </div>`;
   }
+
+  // ===== 반 → 회차별 =====
   else if(p.view==='lesson'){
-    const {result, lessonLabel} = aggregateScores(branchId, semId, {groupBy:'lesson', classLabel:p.classLabel});
+    const {result, lessonLabel} = aggregateScores(branchId, semId, {groupBy:'lesson', classLabel:p.classLabel, gubun:p.gubun});
     const rows = Object.keys(result).map(k=>{const [g,h]=k.split('|');return {k,g,h,a:result[k][g],lesson:lessonLabel[k]};})
       .filter(x=>x.a&&x.a.total).sort((x,y)=> x.g===y.g?(parseInt(x.h)||0)-(parseInt(y.h)||0):x.g.localeCompare(y.g));
-    crumbLine = `<div style="margin-bottom:14px;font-size:12.5px;color:#6B5D9E"><span onclick="setPassView('classlist')" style="cursor:pointer;color:#7C5CFF">← 반별</span> · <b>${esc(p.classLabel)}</b> · 회차별 <span onclick="passOpenStudents('${encodeURIComponent(p.classLabel)}')" style="cursor:pointer;color:#7C5CFF;margin-left:8px">학생별 보기 →</span></div>`;
-    body = `<div style="background:var(--surface-2);border:0.5px solid #ECE7F5;border-radius:16px;padding:6px 18px">
-      ${rows.map(x=>passListRow(`${x.g} ${x.h}회`,x.a,'',x.lesson||'')).join('')||'<div style="padding:20px;text-align:center;color:#A99FC4">데이터 없음</div>'}
+    body = `<div style="margin-bottom:14px;font-size:12.5px;color:#6B5D9E"><span onclick="setPassView('class')" style="cursor:pointer;color:#7C5CFF">← 반별</span> · <b>${esc(p.classLabel)}</b>${p.gubun?` · ${esc(gLabel(p.gubun))}`:''} · 회차별</div>
+    <div style="background:var(--surface-2);border:0.5px solid #ECE7F5;border-radius:16px;padding:6px 18px">
+      ${rows.map(x=>passListRow(`${gLabel(x.g)} ${x.h}회`,x.a,`passOpenLessonStudents('${encodeURIComponent(p.classLabel)}','${x.g}','${x.h}')`,x.lesson||'')).join('')||emptyRow()}
     </div>`;
   }
+
+  // ===== 회차 → 학생별 =====
+  else if(p.view==='lessonStudent'){
+    const students = passLessonStudents(branchId, semId, p.classLabel, p.lessonGubun, p.lessonHoi);
+    body = `<div style="margin-bottom:14px;font-size:12.5px;color:#6B5D9E"><span onclick="passOpenClass('${encodeURIComponent(p.classLabel)}')" style="cursor:pointer;color:#7C5CFF">← 회차별</span> · <b>${esc(p.classLabel)}</b> · ${esc(gLabel(p.lessonGubun))} ${esc(p.lessonHoi)}회 · 학생별</div>
+    <div style="background:var(--surface-2);border:0.5px solid #ECE7F5;border-radius:16px;padding:6px 18px">
+      ${students.map(s=>passStudentStatusRow(s)).join('')||emptyRow()}
+    </div>`;
+  }
+
+  // ===== 학생별 (전체) =====
   else if(p.view==='student'){
-    const {result, meta} = aggregateScores(branchId, semId, {groupBy:'student', classLabel:p.classLabel});
-    const rows = Object.keys(result).map(k=>({k,a:sumAggs(result[k]),label:meta[k].label}))
-      .filter(x=>x.a.total).sort((x,y)=>(y.a.fail+y.a.noshow)-(x.a.fail+x.a.noshow));
-    crumbLine = `<div style="margin-bottom:14px;font-size:12.5px;color:#6B5D9E"><span onclick="passOpenClass('${encodeURIComponent(p.classLabel)}')" style="cursor:pointer;color:#7C5CFF">← 회차별</span> · <b>${esc(p.classLabel)}</b> · 학생별 (문제 많은 순)</div>`;
-    body = `<div style="background:var(--surface-2);border:0.5px solid #ECE7F5;border-radius:16px;padding:6px 18px">
-      ${rows.map(x=>passListRow(x.label,x.a,'','')).join('')||'<div style="padding:20px;text-align:center;color:#A99FC4">데이터 없음</div>'}
+    const {result, meta} = aggregateScores(branchId, semId, {groupBy:'student', gubun:p.gubun});
+    const rows = Object.keys(result).map(k=>({k, a: p.gubun?result[k][p.gubun]:sumAggs(result[k]), byGubun:result[k], label:meta[k].label}))
+      .filter(x=>x.a && x.a.total).sort((x,y)=>(y.a.fail+y.a.noshow)-(x.a.fail+x.a.noshow));
+    body = filterChips() + `<div style="background:var(--surface-2);border:0.5px solid #ECE7F5;border-radius:16px;padding:6px 18px">
+      ${rows.map(x=>passListRow(x.label,x.a,'',p.gubun?'':'전체 시험')).join('')||emptyRow()}
     </div>`;
   }
 
@@ -4884,12 +4944,15 @@ function renderPassrate(){
       <div class="sub">${esc(db.semesters.find(s=>s.id===semId).name)} · Q앱 성적 기준</div></div>
     ${uploadZone}
     <div style="display:flex;gap:6px;margin-bottom:18px">
-      ${tab('branch','분원 전체')}
-      ${tab('classlist','반별')}
+      ${mainTab('branch','분원 전체')}
+      ${mainTab('teacher','담임별')}
+      ${mainTab('class','반별')}
+      ${mainTab('student','학생별')}
     </div>
-    ${crumbLine}
     ${body}`;
 }
+
+function emptyRow(){ return '<div style="padding:20px;text-align:center;color:#A99FC4">데이터 없음</div>'; }
 /* ========================================================================
    STaRT 시험 통과율 — 업로드 파서
    ======================================================================== */
