@@ -852,6 +852,19 @@ function resetAccountPassword(userId){
     saveDB().then(ok=>{ hideSaving(); toast(ok?`${label} 비밀번호가 변경되었습니다`:'저장 실패', ok?'ok':'err'); closeModal(); render(); });
   });
 }
+function myAccountCard(){
+  return `
+    <div class="panel" style="margin-bottom:16px">
+      <h3 style="font-size:14.5px;font-weight:650;margin-bottom:4px">내 계정 비밀번호 변경</h3>
+      <div class="pd" style="margin-bottom:14px">로그인한 본인 계정의 비밀번호를 바꿉니다.</div>
+      <div class="acct-add">
+        <div class="field"><label>현재 비밀번호</label><input id="pwCur" type="password" placeholder="현재 비밀번호"></div>
+        <div class="field"><label>새 비밀번호</label><input id="pwNew" type="password" placeholder="4자 이상"></div>
+        <div class="field"><label>새 비밀번호 확인</label><input id="pwNew2" type="password" placeholder="한 번 더"></div>
+        <button class="btn primary" onclick="changeMyPassword()">변경</button>
+      </div>
+    </div>`;
+}
 /* ============================================================================
    5. 로그인 / 로그아웃
    ============================================================================ */
