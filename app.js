@@ -4748,9 +4748,10 @@ function passLessonStudents(branchId, semId, classLabel, gubun, hoi){
   const nameOf = {};
   (db.qappScores||[]).forEach(s=>{ if(s.studentCode && !nameOf[s.studentCode]) nameOf[s.studentCode]=s.studentName; });
   return codes.map(code=>{
-    const recs = (db.qappScores||[]).filter(s=>s.branchId===branchId && s.semesterId===semId && s.classLabel===classLabel && s.studentCode===code && s.gubun===gubun && s.hoi===hoi);
+    const recs = (db.qappScores||[]).filter(s=>s.branchId===branchId && s.semesterId===semId && s.classLabel===classLabel && s.studentCode===code && s.gubun===gubun && s.hoi===hoi)
+      .sort((a,b)=> (a.examDate||'').localeCompare(b.examDate||''));  // 시간순
     const {cat, reserved} = classifyExam(recs);
-    return {code, name:nameOf[code]||code, cat, reserved};
+    return {code, name:nameOf[code]||code, cat, reserved, attempts:recs};
   }).sort((a,b)=>{
     const order={fail:0,noshow:1,repass:2,pass:3};
     return order[a.cat]-order[b.cat];
@@ -4763,10 +4764,23 @@ function passStudentStatusRow(s){
     fail:   ['미통과','#FBEAF0','#B05478'],
     noshow: ['미응시','#F1EFE8','#8A857A'],
   }[s.cat];
+  // 응시 이력별 점수
+  const tries = s.attempts.filter(a=> a.eungsi==='응시' || a.eungsi==='재시험');
+  let scoreLine = '';
+  if(tries.length){
+    scoreLine = tries.map((a,i)=>{
+      const label = a.eungsi==='재시험' ? `재시험` : '1차';
+      const pass = a.tonggwa==='통과';
+      return `<span style="color:${pass?'#4B2FB8':'#B05478'}">${tries.length>1?label+' ':''}${a.jumsu}/${a.baejeom}</span>`;
+    }).join(' <span style="color:#CFC7E0">·</span> ');
+  } else {
+    scoreLine = `<span style="color:#A99FC4">미응시</span>`;
+  }
   return `<div style="display:flex;align-items:center;gap:12px;padding:12px 4px;border-bottom:0.5px solid #EEEBF6">
-    <div style="flex:1;font-size:13.5px;font-weight:700;color:#2E2748">${esc(s.name)}</div>
+    <div style="width:80px;flex:none;font-size:13.5px;font-weight:700;color:#2E2748">${esc(s.name)}</div>
+    <div style="flex:1;font-size:12px">${scoreLine}</div>
     ${s.reserved?`<span style="font-size:10.5px;color:#7C5CD9;background:#F1ECFC;padding:3px 8px;border-radius:6px">예약</span>`:''}
-    <span style="font-size:11.5px;font-weight:700;color:${badge[2]};background:${badge[1]};padding:4px 11px;border-radius:8px">${badge[0]}</span>
+    <span style="font-size:11.5px;font-weight:700;color:${badge[2]};background:${badge[1]};padding:4px 11px;border-radius:8px;flex:none">${badge[0]}</span>
   </div>`;
 }
 /* 여러 gubun 버킷을 하나로 합산 */
