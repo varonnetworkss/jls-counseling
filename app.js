@@ -957,6 +957,7 @@ function buildShell(){
       <div class="sb-item" data-nav="admin">${I.dash}<span>통합 대시보드</span></div>
       <div class="sb-item" data-nav="roster">${I.roster}<span>신규·퇴원 명단</span></div>
       <div class="sb-item" data-nav="closing">${I.closing}<span>인원마감표</span></div>
+      <div class="sb-item" data-nav="passrate">${I.closing}<span>STaRT 시험 통과율</span></div>
       <div class="sb-item" data-nav="accounts">${I.acct}<span>분원 계정 관리</span></div>`;
 } else if(isTeacher){
     nav.innerHTML = `
@@ -1023,7 +1024,7 @@ function render(){
   // branch 대시보드/데이터관리는 불가. branch는 admin/accounts 불가.
   if(session.role==='admin'){
     if(root==='branch' && parts[1]!=='teacher' && parts[1]!=='class'){ go('admin'); return; }
-   if(root==='data'||root==='students'||root==='segments-edit'||root==='teachers'||root==='start'||root==='assistants'){ go('admin'); return; }
+   if(root==='data'||root==='students'||root==='segments-edit'||root==='teachers'||root==='start'||root==='passrate'||root==='assistants'){ go('admin'); return; }
   }
   // 선생님: 자기 반 관련 화면만 (myclasses / branch teacher·class 상세)
 if(session.role==='teacher'){
@@ -1067,6 +1068,7 @@ if(session.role==='teacher'){
 else if(root==='segments-edit'){ setActiveNav('segments-edit'); renderSegmentEdit(); }
   else if(root==='segments'){ setActiveNav('segments'); renderSegmentView(); }
   else if(root==='start'){ setActiveNav('start'); renderStart(); }
+  else if(root==='passrate'){ setActiveNav('passrate'); renderPassrate(); }
   else if(root==='myclasses'){ setActiveNav('myclasses'); renderTeacherHome(); }
   else if(root==='myaccount'){ setActiveNav('myaccount'); renderMyAccount(); }
   else { go(session.role==='admin'?'admin':'branch'); return; }
