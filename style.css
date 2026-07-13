@@ -756,3 +756,25 @@ body.wide-page #content{ max-width:1400px !important; }
   .content{padding:14px 11px}
   .kpi-row{gap:8px}
 }
+@media(max-width:900px){
+  /* KPI 카드 2열로 접기 */
+  .kpi-row{display:grid !important;grid-template-columns:1fr 1fr;gap:8px}
+  .kpi-row.c7, .kpi-row.c6, .kpi-row.c4{grid-template-columns:1fr 1fr}
+  .kpi{min-width:0}
+  .kpi .kl{white-space:normal;word-break:keep-all}
+  .kpi .kv .num{font-size:26px}
+
+  /* 분원 카드 1열 */
+  .card-grid, .card-grid.g3, .card-grid.g2{grid-template-columns:1fr !important}
+
+  /* 정렬 버튼 줄 넘침 방지 */
+  .sort-bar{flex-wrap:wrap;gap:6px}
+
+  /* 표 가로 스크롤 */
+  .table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+}
+
+@media(max-width:480px){
+  .kpi .kv .num{font-size:22px}
+  .kpi .kl{font-size:11px}
+}
