@@ -5023,13 +5023,20 @@ function saveTeacherOverride(classLabel){
   showSaving('담임 저장 중…');
   saveDB().then(ok=>{ hideSaving(); toast(ok?'담임이 저장되었습니다':'저장 실패, 다시 시도하세요', ok?'ok':'err'); closeModal(); render(); });
 }
-function renderPassrate(){
-  const branchId = session.branchId, semId = state.semId;
+function renderPassrate(viewBranchId){
+  const isAdminView = session.role==='admin' && viewBranchId;
+  const branchId = isAdminView ? viewBranchId : session.branchId, semId = state.semId;
   const p = passState();
   crumbs([{label:'STaRT 시험 통과율'}]);
   const scoreCount = activeScores(branchId, semId).length;
 
-  const uploadZone = `
+  const branchName = getBranch(branchId)?.name || '';
+  const uploadZone = isAdminView ? `
+    <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:#F6F3FC;border-radius:12px;margin-bottom:18px">
+      <span style="font-size:15px">👁</span>
+      <span style="font-size:12px;color:#8478A8"><b style="color:#5B4B8A">${esc(branchName)}</b> · 조회 전용 · 성적 업로드는 해당 분원 계정에서 합니다</span>
+      <span onclick="setPassView('branch');go('passrate-hub')" style="margin-left:auto;font-size:11.5px;color:#7C5CD9;cursor:pointer;white-space:nowrap">← 분원 목록</span>
+    </div>` : `
     <label style="display:block;cursor:pointer;margin-bottom:20px">
       <div style="border:1px dashed var(--line);border-radius:14px;padding:16px 18px;display:flex;align-items:center;justify-content:space-between;background:var(--surface-2)">
         <div style="display:flex;align-items:center;gap:12px">
