@@ -4788,8 +4788,8 @@ function passStudentStatusRow(s){
   }
   return `<div style="display:flex;align-items:center;gap:12px;padding:12px 4px;border-bottom:0.5px solid #EEEBF6">
     <div style="width:80px;flex:none;font-size:13.5px;font-weight:700;color:#2E2748">${esc(s.name)}</div>
-    <div style="font-size:12px">${scoreLine}</div>
     <div style="flex:1"></div>
+    <div style="font-size:12px">${scoreLine}</div>
     ${(s.cat==='fail'||s.cat==='noshow') && passReserveInfo(s.attempts)?`<span style="font-size:10.5px;color:#7C5CD9;background:#F1ECFC;padding:3px 9px;border-radius:6px;white-space:nowrap">예약 ${esc(passReserveInfo(s.attempts))}</span>`:''}
     <span style="font-size:11.5px;font-weight:700;color:${badge[2]};background:${badge[1]};padding:4px 11px;border-radius:8px;flex:none">${badge[0]}</span>
   </div>`;
