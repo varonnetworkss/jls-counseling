@@ -4481,7 +4481,7 @@ function resolveQTeacher(branchId, semId, classLabel, gubun, fileTeacher){
 function activeScores(branchId, semId){
   const wd = withdrawnCodes(branchId, semId);
   const validClasses = qappValidClasses(branchId, semId);
-  rconst validCodes = new Set((db.students||[]).map(s=>s.code));
+  const validCodes = new Set((db.students||[]).map(s=>s.code));
   return (db.qappScores||[]).filter(s=>
     s.branchId===branchId && s.semesterId===semId &&
     s.studentCode && !wd.has(s.studentCode) &&
