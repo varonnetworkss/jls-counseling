@@ -957,7 +957,6 @@ function buildShell(){
       <div class="sb-item" data-nav="admin">${I.dash}<span>통합 대시보드</span></div>
       <div class="sb-item" data-nav="roster">${I.roster}<span>신규·퇴원 명단</span></div>
       <div class="sb-item" data-nav="closing">${I.closing}<span>인원마감표</span></div>
-      <div class="sb-item" data-nav="passrate">${I.closing}<span>STaRT 시험 통과율</span></div>
       <div class="sb-item" data-nav="accounts">${I.acct}<span>분원 계정 관리</span></div>`;
 } else if(isTeacher){
     nav.innerHTML = `
@@ -981,6 +980,7 @@ function buildShell(){
       <div class="sb-sect">학생</div>
       <div class="sb-item" data-nav="students">${I.stu}<span>학생관리</span></div>
       <div class="sb-item" data-nav="start">${I.stu}<span>STaRT 관리</span></div>
+      <div class="sb-item" data-nav="passrate">${I.closing}<span>STaRT 시험 통과율</span></div>
 
       <div class="sb-sect">상담</div>
       <div class="sb-item" data-nav="segments-edit">${I.seg}<span>세그먼트 공지</span></div>
