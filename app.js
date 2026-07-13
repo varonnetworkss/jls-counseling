@@ -957,6 +957,7 @@ function buildShell(){
       <div class="sb-item" data-nav="admin">${I.dash}<span>통합 대시보드</span></div>
       <div class="sb-item" data-nav="roster">${I.roster}<span>신규·퇴원 명단</span></div>
       <div class="sb-item" data-nav="closing">${I.closing}<span>인원마감표</span></div>
+      <div class="sb-item" data-nav="passrate-hub">${I.closing}<span>STaRT 시험 통과율</span></div>
       <div class="sb-item" data-nav="accounts">${I.acct}<span>분원 계정 관리</span></div>`;
 } else if(isTeacher){
     nav.innerHTML = `
@@ -1069,7 +1070,10 @@ else if(root==='segments-edit'){ setActiveNav('segments-edit'); renderSegmentEdi
   else if(root==='segments'){ setActiveNav('segments'); renderSegmentView(); }
   else if(root==='start'){ setActiveNav('start'); renderStart(); }
   else if(root==='passrate'){ setActiveNav('passrate'); renderPassrate(); }
-  else if(root==='myclasses'){ setActiveNav('myclasses'); renderTeacherHome(); }
+  else if(root==='passrate-hub'){
+    if(parts[1]==='branch' && parts[2]){ setActiveNav('passrate-hub'); renderPassrate(parts[2]); }
+    else { setActiveNav('passrate-hub'); renderPassrateHub(); }
+  }
   else if(root==='myaccount'){ setActiveNav('myaccount'); renderMyAccount(); }
   else { go(session.role==='admin'?'admin':'branch'); return; }
   el('content').scrollIntoView({block:'start'});
@@ -5022,6 +5026,48 @@ function saveTeacherOverride(classLabel){
   });
   showSaving('담임 저장 중…');
   saveDB().then(ok=>{ hideSaving(); toast(ok?'담임이 저장되었습니다':'저장 실패, 다시 시도하세요', ok?'ok':'err'); closeModal(); render(); });
+}
+function renderPassrateHub(){
+  const semId = state.semId;
+  crumbs([{label:'STaRT 시험 통과율'}]);
+  const gLabel = g=> g==='모범인증'?'문법인증':g;
+
+  const cards = (db.branches||[]).map(b=>{
+    const {result} = aggregateScores(b.id, semId, {groupBy:'branch'});
+    const agg = result['ALL'];
+    const hasData = agg && QAPP_GUBUNS.some(g=>agg[g]&&agg[g].total);
+    if(!hasData){
+      return `<div style="background:var(--surface-2);border:0.5px solid #ECE7F5;border-radius:16px;padding:16px 18px;opacity:0.65">
+        <div style="font-size:15px;font-weight:700;color:#2E2748;margin-bottom:2px">${esc(b.name)}</div>
+        <div style="font-size:11px;color:#A99FC4;margin-bottom:14px">아직 성적 미업로드</div>
+        <div style="display:flex;align-items:center;justify-content:center;height:100px;color:#C4BBDE;font-size:12px">성적 데이터가 없습니다</div>
+      </div>`;
+    }
+    const cell = g=>{
+      const a = agg[g]||emptyAgg();
+      const rate = passRate(a);
+      const bad = rate<75 && a.total>0;
+      if(!a.total) return `<div style="background:#F6F4FB;border-radius:10px;padding:10px 12px"><div style="font-size:11px;color:#B8B0D0;margin-bottom:3px">${gLabel(g)}</div><div style="font-size:20px;font-weight:700;color:#C4BBDE">–</div></div>`;
+      return `<div style="background:${bad?'#FCF0F5':'#F6F4FB'};border-radius:10px;padding:10px 12px">
+        <div style="font-size:11px;color:${bad?'#B05478':'#8A7CB8'};margin-bottom:3px">${gLabel(g)} <span style="color:${bad?'#E0A9C0':'#C4BBDE'}">· ${a.total.toLocaleString()}</span></div>
+        <div style="font-size:20px;font-weight:700;color:${bad?'#B05478':'#5B4B8A'}">${rate}<span style="font-size:12px">%</span></div>
+      </div>`;
+    };
+    return `<div onclick="go('passrate-hub/branch/${b.id}')" style="background:var(--surface-2);border:0.5px solid #ECE7F5;border-radius:16px;padding:16px 18px;cursor:pointer;transition:.15s" onmouseover="this.style.borderColor='#D8CEF0'" onmouseout="this.style.borderColor='#ECE7F5'">
+      <div style="font-size:15px;font-weight:700;color:#2E2748;margin-bottom:2px">${esc(b.name)}</div>
+      <div style="font-size:11px;color:#A99FC4;margin-bottom:14px">클릭해서 상세 보기</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        ${cell('CHAT')}${cell('성과')}${cell('활용')}${cell('모범인증')}
+      </div>
+      <div style="text-align:right;margin-top:12px;font-size:11.5px;color:#7C5CD9">상세 ›</div>
+    </div>`;
+  }).join('');
+
+  el('content').innerHTML = `
+    <div class="page-head"><h2>STaRT 시험 통과율</h2>
+      <div class="sub">전 분원 · ${esc(db.semesters.find(s=>s.id===semId).name)} · 카드를 클릭하면 상세로 이동</div></div>
+    <div style="font-size:14px;font-weight:700;color:#3D3560;margin-bottom:12px">분원별 현황</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">${cards}</div>`;
 }
 function renderPassrate(viewBranchId){
   const isAdminView = session.role==='admin' && viewBranchId;
