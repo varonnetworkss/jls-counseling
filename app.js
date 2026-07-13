@@ -4772,7 +4772,7 @@ function importQappScores(file){
       cls:['수강반','반'],
       teacher:['담임선생님','담임','선생님'],
       hoi:['회차'],
-      gubun:['시험구분','구분'],
+      gubun:['시험구분'],
       lesson:['단원명','단원','레슨'],
       date:['시험일자','시험일','일자'],
       baejeom:['배점'],
