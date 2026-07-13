@@ -5047,15 +5047,16 @@ function renderPassrateHub(){
       const a = agg[g]||emptyAgg();
       const rate = passRate(a);
       const bad = rate<75 && a.total>0;
-      if(!a.total) return `<div style="background:#F6F4FB;border-radius:10px;padding:10px 12px"><div style="font-size:11px;color:#B8B0D0;margin-bottom:3px">${gLabel(g)}</div><div style="font-size:20px;font-weight:700;color:#C4BBDE">–</div></div>`;
-      return `<div style="background:${bad?'#FCF0F5':'#F6F4FB'};border-radius:10px;padding:10px 12px">
-        <div style="font-size:11px;color:${bad?'#B05478':'#8A7CB8'};margin-bottom:3px">${gLabel(g)} <span style="color:${bad?'#E0A9C0':'#C4BBDE'}">· ${a.total.toLocaleString()}</span></div>
-        <div style="font-size:20px;font-weight:700;color:${bad?'#B05478':'#5B4B8A'}">${rate}<span style="font-size:12px">%</span></div>
+      if(!a.total) return `<div style="background:#F5F2FC;border-radius:12px;padding:11px 13px"><div style="font-size:11px;color:#C4BBDE;margin-bottom:4px">${gLabel(g)}</div><div style="font-size:21px;font-weight:700;color:#D6CEEC">–</div></div>`;
+      const bg = bad ? 'linear-gradient(135deg,#FDEEF4,#FBE4EE)' : 'linear-gradient(135deg,#F3EEFF,#EDE7FC)';
+      return `<div style="background:${bg};border-radius:12px;padding:11px 13px">
+        <div style="font-size:11px;color:${bad?'#C2567E':'#7C6BB0'};margin-bottom:4px;font-weight:500">${gLabel(g)} <span style="color:${bad?'#E5A9C4':'#B4A6E0'};font-weight:400">· ${a.total.toLocaleString()}</span></div>
+        <div style="font-size:21px;font-weight:700;color:${bad?'#C2567E':'#6B4FD6'}">${rate}<span style="font-size:12px">%</span></div>
       </div>`;
     };
-    return `<div onclick="go('passrate-hub/branch/${b.id}')" style="background:var(--surface-2);border:0.5px solid #ECE7F5;border-radius:16px;padding:16px 18px;cursor:pointer;transition:.15s" onmouseover="this.style.borderColor='#D8CEF0'" onmouseout="this.style.borderColor='#ECE7F5'">
-      <div style="font-size:15px;font-weight:700;color:#2E2748;margin-bottom:2px">${esc(b.name)}</div>
-      <div style="font-size:11px;color:#A99FC4;margin-bottom:14px">클릭해서 상세 보기</div>
+    return `<div onclick="go('passrate-hub/branch/${b.id}')" style="background:var(--surface-2);border:1px solid #ECE7F5;border-radius:18px;padding:18px 20px;cursor:pointer;transition:.18s;box-shadow:0 2px 12px rgba(124,92,255,.05)" onmouseover="this.style.borderColor='#C9B9F5';this.style.boxShadow='0 6px 20px rgba(124,92,255,.12)'" onmouseout="this.style.borderColor='#ECE7F5';this.style.boxShadow='0 2px 12px rgba(124,92,255,.05)'">
+      <div style="font-size:15.5px;font-weight:700;color:#3D2E6B;margin-bottom:2px">${esc(b.name)}</div>
+      <div style="font-size:11px;color:#B4A6D8;margin-bottom:14px">클릭해서 상세 보기</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         ${cell('CHAT')}${cell('성과')}${cell('활용')}${cell('문법인증')}
       </div>
