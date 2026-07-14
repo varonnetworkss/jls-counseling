@@ -4924,7 +4924,7 @@ function passStudentStatusRow(s){
   </div>`;
 }
 /* 학생별 행 (전체 시험 집계 + 클릭하면 상세) */
-function passStudentRow(code, name, a){
+function passStudentRow(code, name, a, branchId){
   const open = state.passOpenStudent===code;
   const total=a.total, pass=a.pass+a.repass, fail=a.fail, noshow=a.noshow;
   const stu = db.students.find(x=>x.code===code);
@@ -4940,8 +4940,8 @@ function passStudentRow(code, name, a){
       총 <b style="color:#4B2FB8">${total}</b> · 통과 <b style="color:#4B2FB8">${pass}</b> · 미통과 <b style="color:${bad?'#993556':'#B05478'}">${fail}</b> · 미응시 <b style="color:#8A857A">${noshow}</b>
     </div>
   </div>`;
-  if(!open) return head;
-  return head + passStudentDetail(code);
+ if(!open) return head;
+  return head + passStudentDetail(code, branchId);
 }
 function togglePassStudent(code){
   state.passOpenStudent = state.passOpenStudent===code ? null : code;
@@ -4949,8 +4949,9 @@ function togglePassStudent(code){
 }
 
 /* 학생 상세: 시험구분별 묶어서 회차순, 교재·레슨·점수·통과여부 */
-function passStudentDetail(code){
-  const branchId = session.branchId, semId = state.semId;
+function passStudentDetail(code, branchId){
+  branchId = branchId || session.branchId;
+  const semId = state.semId;
   const scores = activeScores(branchId, semId).filter(s=>s.studentCode===code);
   // (구분, 회차)별 묶기
   const byKey = {};
@@ -5216,7 +5217,7 @@ function renderPassrate(viewBranchId){
         style="width:100%;padding:10px 14px;border:1px solid var(--line);border-radius:10px;font-size:14px">
     </div>
     <div style="background:var(--surface-2);border:0.5px solid #ECE7F5;border-radius:16px;padding:6px 18px">
-      ${filtered.map(x=>passStudentRow(x.k, x.label, x.a)).join('')||emptyRow()}
+      ${filtered.map(x=>passStudentRow(x.k, x.label, x.a, branchId)).join('')||emptyRow()}
     </div>`;
   }
 
