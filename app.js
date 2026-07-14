@@ -4730,7 +4730,8 @@ function teacherDisplayMap(branchId, semId){
    filter:  {gubun, classLabel} 로 범위 좁히기 (옵션)
    반환: { [groupKey]: { [gubun]: aggBucket }, ... } + 메타 */
 function aggregateScores(branchId, semId, opts={}){
-  const scores = activeScores(branchId, semId);
+  let scores = activeScores(branchId, semId);
+  if(opts.teacherKey){ scores = scores.filter(s=>teacherKey(s.teacher)===opts.teacherKey); }
   const classSets = classExamSets(scores);
   const enrollMap = enrollDateOf(branchId, semId);
   const tDisplay = teacherDisplayMap(branchId, semId);
@@ -4808,8 +4809,9 @@ function aggregateScores(branchId, semId, opts={}){
   return {result, meta, lessonLabel};
 }
 /* 학생별 집계 — 역산 없이, 실제 응시 기록만. (반 꼬임 유령 방지) */
-function aggregateStudents(branchId, semId){
-  const scores = activeScores(branchId, semId);
+function aggregateStudents(branchId, semId, opts={}){
+  let scores = activeScores(branchId, semId);
+  if(opts.teacherKey){ scores = scores.filter(s=>teacherKey(s.teacher)===opts.teacherKey); }
   // 학생 x (구분+회차)로 묶어서 최종 상태 분류
   const byStuExam = {};
   scores.forEach(s=>{
