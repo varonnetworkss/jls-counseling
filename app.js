@@ -4781,12 +4781,12 @@ function passRowWithOverride(classLabel, a){
   </div>`;
 }
 /* 담임 행 — 클릭하면 반 목록 + 시험구분별 상세 펼침 */
-function passTeacherRow(teacher, sortAgg, byGubun){
+function passTeacherRow(teacher, sortAgg, byGubun, branchId){
   if(!state.passOpenTeachers) state.passOpenTeachers = {};
   if(!state.passTeacherClass) state.passTeacherClass = {};
   const open = !!state.passOpenTeachers[teacher];
   const bad = passRate(sortAgg) < 75;
-  const branchId = session.branchId, semId = state.semId;
+  const semId = state.semId;
 
   const teacherKey = normTeacher(teacher);
   const classes = [...new Set(activeScores(branchId, semId)
@@ -5169,7 +5169,7 @@ function renderPassrate(viewBranchId){
       return {k, a, byGubun:result[k], label:meta[k].label};
     }).filter(x=>x.a && x.a.total).sort((x,y)=>passRate(x.a)-passRate(y.a));
     body = `<div style="background:var(--surface-2);border:0.5px solid #ECE7F5;border-radius:16px;padding:6px 18px">
-      ${rows.map(x=>passTeacherRow(x.label, x.a, x.byGubun)).join('')||emptyRow()}
+      ${rows.map(x=>passTeacherRow(x.label, x.a, x.byGubun, branchId)).join('')||emptyRow()}
     </div>`;
   }
 
