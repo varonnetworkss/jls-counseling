@@ -1018,7 +1018,7 @@ function render(){
    el('content').style.maxWidth = '';
   if(!session){ showLogin(); return; }
   const { parts } = parseRoute();
-  const root = parts[0] || (session.role==='admin'?'admin':'branch');
+  const root = parts[0] || (session.role==='admin'?'admin':(session.role==='teacher'?'myclasses':(session.role==='assistant'?'start':'branch')));
 
   // 권한 가드
   // admin은 branch/teacher, branch/class (담임·반 상세)는 볼 수 있으나
