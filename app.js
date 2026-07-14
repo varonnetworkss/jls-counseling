@@ -3059,6 +3059,18 @@ function semDefaultDate(semId){
   const y=parseInt(m[1],10), mo={winter:12,spring:3,summer:6,fall:9}[m[2]]||3;
   return `${y}-${String(mo).padStart(2,'0')}-01`;
 }
+// "5월말일퇴원"→2026-05-31, "3월중도퇴원"→2026-03-15. 월 못 찾으면 학기기준일.
+function withdrawDateFromLabel(label, semId){
+  const mm = String(label).match(/(\d{1,2})\s*월/);
+  if(!mm) return semDefaultDate(semId);
+  const month = parseInt(mm[1],10);
+  const sm = String(semId).match(/sem_(\d+)_(\w+)/);
+  let year = sm ? parseInt(sm[1],10) : new Date().getFullYear();
+  if(sm && sm[2]==='winter' && (month===1||month===2)) year += 1;
+  const isMid = /중도/.test(label);
+  const day = isMid ? 15 : new Date(year, month, 0).getDate();
+  return `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+}
 function importRoster(file, branchId, semId){
   readTable(file, async rows=>{
     if(rows.length<2){ toast('데이터가 없습니다','err'); return; }
@@ -3070,7 +3082,8 @@ function importRoster(file, branchId, semId){
       cls:['반 이름','반이름','반명','반','클래스'],
       teacher:['담임선생님','담임명','담임','선생님'],
       note:['특이사항','비고','메모'],
-      startdate:['반 시작일','반시작일','시작일','등원일','입학일']
+      startdate:['반 시작일','반시작일','시작일','등원일','입학일'],
+      withdraw:['퇴원생','퇴원','퇴원여부','퇴원일']
     };
     // 맨 위 병합 제목행이 있어도 자동으로 건너뜀 — 최대 3행 탐색
     let idx = null;
@@ -3095,10 +3108,13 @@ function importRoster(file, branchId, semId){
       const note = idx.note>=0 ? String(r[idx.note]||'').trim() : '';
       // '복귀' 글자 있으면 복귀, 없고 '신규'만 있으면 신규. 둘 다 섞여 있어도 복귀 우선.
       // (복귀생도 신규로 카운트되지만, 특이사항/배지엔 '복귀'로 구분 표시됨)
-      // 특이사항 키워드 4분류: 전출 > 전입 > 복귀 > 신규
-      const isTransferOut = /전출/.test(note);
+// 퇴원생(AB) 열 — 값 있으면 퇴원/전출. 전출은 분원명 파싱.
+      const wdRaw = idx.withdraw>=0 ? String(r[idx.withdraw]||'').trim() : '';
+      const hasWd = !!wdRaw;
+      const isTransferOut = /전출/.test(wdRaw) || /전출/.test(note);
       const isTransferIn  = /전입/.test(note);
-      const transferBranch = (isTransferOut||isTransferIn) ? branchIdFromNote(note) : null;
+      const transferBranch = (isTransferOut||isTransferIn) ? (branchIdFromNote(wdRaw)||branchIdFromNote(note)) : null;
+      const wdDate = hasWd ? withdrawDateFromLabel(wdRaw, semId) : '';
       const origin = /복귀/.test(note)?'return' : ((/신규/.test(note)||isTransferIn)?'new' : 'start');
       const targetType = (origin==='new'||origin==='return')?'HCMC':'MC';
       const teacher = String(r[idx.teacher]||'').trim() || '미배정';
@@ -3116,13 +3132,15 @@ function importRoster(file, branchId, semId){
       else { stu.name=name; if(school)stu.school=school; if(grade)stu.grade=grade; }
       // 학기레코드 upsert — ★ kind까지 일치해야 같은 레코드 (정규/내신 별개 공존)
       let rec = db.semesterRecords.find(x=>x.studentId===stu.id && x.branchId===branchId && x.semesterId===semId && (x.kind||'regular')===kind);
+      const willWithdraw = hasWd || isTransferOut;
+      const finalWdDate = isTransferOut ? (wdDate||enrollDate||semDefaultDate(semId)) : (wdDate||'');
       if(!rec){
         rec={id:uid('rec'),studentId:stu.id,branchId,semesterId:semId,
           className:classFull,classLabel:classLbl,teacher,note,targetType,
-          status: isTransferOut?'withdraw':'active', origin, enrollDate, kind,
+          status: willWithdraw?'withdraw':'active', origin, enrollDate, kind,
           transfer: isTransferOut, transferIn: isTransferIn,
           transferTo: transferBranch,
-          withdrawDate: isTransferOut ? (enrollDate||semDefaultDate(semId)) : ''};
+          withdrawDate: willWithdraw ? (finalWdDate||semDefaultDate(semId)) : ''};
         db.semesterRecords.push(rec);
         if(kind==='exam'){ examAdded++; }
         else {
@@ -3137,9 +3155,12 @@ function importRoster(file, branchId, semId){
         rec.transferIn = isTransferIn;
         if(isTransferOut){
           rec.status='withdraw'; rec.transfer=true; rec.transferTo=transferBranch;
-          if(!rec.withdrawDate) rec.withdrawDate = enrollDate||semDefaultDate(semId);
+          rec.withdrawDate = finalWdDate||rec.withdrawDate||semDefaultDate(semId);
+        } else if(hasWd){
+          rec.status='withdraw'; rec.transfer=false; rec.transferTo=null;
+          rec.withdrawDate = finalWdDate||rec.withdrawDate||semDefaultDate(semId);
         } else if(rec.status==='withdraw' && !rec.transfer){
-          rec.status='active';  // 순수 퇴원이었던 것만 되살림. 전출은 유지.
+          rec.status='active'; rec.withdrawDate='';
         }
         updated++;
       }
