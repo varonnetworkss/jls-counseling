@@ -1696,7 +1696,7 @@ const cells = STAGES.map(stg=>{
 return `<td class="cc"><span class="cc-mark undone" title="미완료">✕</span></td>`;
     }).join('');
     return `<tr>
-      <td><div class="st-name">${esc(stu.name)}${originBadge}</div></td>
+      <td><div class="st-name" onclick="openStudentExams('${stu.code}','${esc(stu.name)}')" style="cursor:pointer;color:#7C5CFF;text-decoration:underline;text-underline-offset:2px">${esc(stu.name)}${originBadge}</div></td>
       <td><div>${esc(stu.school)}</div><div class="st-meta">${esc(stu.grade)}학년</div></td>
       <td><span class="code-chip">${esc(stu.code)}</span></td>
       <td>${statusBadge}</td>
@@ -1747,6 +1747,19 @@ function onToggleExempt(studentId, stage){
   const branchId = activeBranchId();
   toggleExemption(studentId, branchId, state.semId, stage);
   render();
+}/* 학생 시험 통과/미통과 상세 팝업 (상담표에서 학생명 클릭) */
+function openStudentExams(code, name){
+  const branchId = activeBranchId();
+  const detail = passStudentDetail(code, branchId);
+  openModal(`
+    <div class="modal-head">
+      <div><h3>${esc(name)} · STaRT 시험 결과</h3>
+        <div class="mh-sub">시험구분별 통과 현황</div></div>
+      <button class="modal-x" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body" style="max-height:60vh;overflow-y:auto">
+      ${detail || '<div class="empty"><div class="et">시험 기록이 없습니다</div></div>'}
+    </div>`);
 }
 /* ============================================================================
    14. 상담 내용 팝업
