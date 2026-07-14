@@ -3059,6 +3059,15 @@ function semDefaultDate(semId){
   const y=parseInt(m[1],10), mo={winter:12,spring:3,summer:6,fall:9}[m[2]]||3;
   return `${y}-${String(mo).padStart(2,'0')}-01`;
 }
+// AD열 퇴원일 파싱 — Date객체/문자열/엑셀날짜 처리
+function parseWithdrawDate(v){
+  if(!v) return '';
+  if(v instanceof Date && !isNaN(v)) return `${v.getFullYear()}-${String(v.getMonth()+1).padStart(2,'0')}-${String(v.getDate()).padStart(2,'0')}`;
+  const s=String(v).trim();
+  const dm=s.match(/(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})/);
+  if(dm) return `${dm[1]}-${dm[2].padStart(2,'0')}-${dm[3].padStart(2,'0')}`;
+  return '';
+}
 // "5월말일퇴원"→2026-05-31, "3월중도퇴원"→2026-03-15. 월 못 찾으면 학기기준일.
 function withdrawDateFromLabel(label, semId){
   const mm = String(label).match(/(\d{1,2})\s*월/);
@@ -3083,7 +3092,8 @@ function importRoster(file, branchId, semId){
       teacher:['담임선생님','담임명','담임','선생님'],
       note:['특이사항','비고','메모'],
       startdate:['반 시작일','반시작일','시작일','등원일','입학일'],
-      withdraw:['퇴원생','퇴원','퇴원여부','퇴원일']
+      withdraw:['퇴원생','퇴원','퇴원여부'],
+      withdrawdate:['퇴원일']
     };
     // 맨 위 병합 제목행이 있어도 자동으로 건너뜀 — 최대 3행 탐색
     let idx = null;
@@ -3114,7 +3124,11 @@ function importRoster(file, branchId, semId){
       const isTransferOut = /전출/.test(wdRaw) || /전출/.test(note);
       const isTransferIn  = /전입/.test(note);
       const transferBranch = (isTransferOut||isTransferIn) ? (branchIdFromNote(wdRaw)||branchIdFromNote(note)) : null;
-      const wdDate = hasWd ? withdrawDateFromLabel(wdRaw, semId) : '';
+      let wdDate = '';
+      if(hasWd){
+        const rawWdDate = idx.withdrawdate>=0 ? r[idx.withdrawdate] : '';
+        wdDate = parseWithdrawDate(rawWdDate) || withdrawDateFromLabel(wdRaw, semId);
+      }
       const origin = /복귀/.test(note)?'return' : ((/신규/.test(note)||isTransferIn)?'new' : 'start');
       const targetType = (origin==='new'||origin==='return')?'HCMC':'MC';
       const teacher = String(r[idx.teacher]||'').trim() || '미배정';
