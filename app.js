@@ -1090,7 +1090,10 @@ else if(root==='segments-edit'){ setActiveNav('segments-edit'); renderSegmentEdi
     else { setActiveNav('passrate-hub'); renderPassrateHub(); }
   }
   else if(root==='myaccount'){ setActiveNav('myaccount'); renderMyAccount(); }
-  else { go(session.role==='admin'?'admin':'branch'); return; }
+  else if(root==='myclasses'){ setActiveNav('myclasses'); renderTeacherHome(); }
+  else if(root==='myaccount'){ setActiveNav('myaccount'); renderMyAccount(); }
+  else if(root==='segments'){ setActiveNav('segments'); renderSegmentView(); }
+  else { go(session.role==='admin'?'admin':(session.role==='teacher'?'myclasses':(session.role==='assistant'?'start':'branch'))); return; }
   el('content').scrollIntoView({block:'start'});
   window.scrollTo(0,0);
 }
