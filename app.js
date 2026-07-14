@@ -5247,13 +5247,17 @@ function renderPassrateHub(){
 }
 function renderPassrate(viewBranchId){
   const isAdminView = session.role==='admin' && viewBranchId;
+  const isTeacherView = session.role==='teacher';
+  const tKey = isTeacherView ? teacherKey(session.teacherName) : null;
   const branchId = isAdminView ? viewBranchId : session.branchId, semId = state.semId;
   const p = passState();
+  // 담임은 반별/학생별만 — 다른 뷰로 진입 시 반별로
+  if(isTeacherView && (p.view==='branch' || p.view==='teacher')){ p.view='class'; }
   crumbs([{label:'STaRT 시험 통과율'}]);
   const scoreCount = activeScores(branchId, semId).length;
 
   const branchName = getBranch(branchId)?.name || '';
-  const uploadZone = isAdminView ? `
+  const uploadZone = (isAdminView || isTeacherView) ? `
     <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:#F6F3FC;border-radius:12px;margin-bottom:18px">
       <span style="font-size:15px">👁</span>
       <span style="font-size:12px;color:#8478A8"><b style="color:#5B4B8A">${esc(branchName)}</b> · 조회 전용 · 성적 업로드는 해당 분원 계정에서 합니다</span>
@@ -5323,7 +5327,7 @@ function renderPassrate(viewBranchId){
 
   // ===== 반별 =====
   else if(p.view==='class'){
-    const {result, meta} = aggregateScores(branchId, semId, {groupBy:'class', gubun:p.gubun});
+    const {result, meta} = aggregateScores(branchId, semId, {groupBy:'class', gubun:p.gubun, teacherKey:tKey});
     const rows = Object.keys(result).map(k=>({k, a: p.gubun?result[k][p.gubun]:sumAggs(result[k]), label:meta[k].label}))
       .filter(x=>x.a && x.a.total).sort((x,y)=>passRate(x.a)-passRate(y.a));
     body = `<div style="background:var(--surface-2);border:0.5px solid #ECE7F5;border-radius:16px;padding:6px 18px">
@@ -5333,7 +5337,7 @@ function renderPassrate(viewBranchId){
 
   // ===== 반 → 회차별 =====
   else if(p.view==='lesson'){
-    const {result, lessonLabel} = aggregateScores(branchId, semId, {groupBy:'lesson', classLabel:p.classLabel, gubun:p.gubun});
+    const {result, lessonLabel} = aggregateScores(branchId, semId, {groupBy:'lesson', classLabel:p.classLabel, gubun:p.gubun, teacherKey:tKey});
     const rows = Object.keys(result).map(k=>{const [g,h]=k.split('|');return {k,g,h,a:result[k][g],lesson:lessonLabel[k]};})
       .filter(x=>x.a&&x.a.total).sort((x,y)=> x.g===y.g?(parseInt(x.h)||0)-(parseInt(y.h)||0):x.g.localeCompare(y.g));
     body = `<div style="margin-bottom:14px;font-size:12.5px;color:#6B5D9E"><span onclick="setPassView('class')" style="cursor:pointer;color:#7C5CFF">← 반별</span> · <b>${esc(p.classLabel)}</b>${p.gubun?` · ${esc(gLabel(p.gubun))}`:''} · 회차별</div>
@@ -5353,7 +5357,7 @@ function renderPassrate(viewBranchId){
 
   // ===== 학생별 (전체) =====
   else if(p.view==='student'){
-    const {result, meta} = aggregateStudents(branchId, semId);
+    const {result, meta} = aggregateStudents(branchId, semId, {teacherKey:tKey});
     const rows = Object.keys(result).map(k=>({k, a: sumAggs(result[k]), byGubun:result[k], label:meta[k].label}))
       .filter(x=>x.a && x.a.total).sort((x,y)=>(y.a.fail+y.a.noshow)-(x.a.fail+x.a.noshow));
    const q = (state.passStudentSearch||'').trim();
@@ -5373,10 +5377,10 @@ function renderPassrate(viewBranchId){
       <div class="sub">${esc(db.semesters.find(s=>s.id===semId).name)} · Q앱 성적 기준</div></div>
     ${uploadZone}
     <div style="display:flex;gap:6px;margin-bottom:18px">
-      ${mainTab('branch','분원 전체')}
-      ${mainTab('teacher','담임별')}
-      ${mainTab('class','반별')}
-      ${mainTab('student','학생별')}
+      ${isTeacherView ? '' : mainTab('branch','분원 전체')}
+      ${isTeacherView ? '' : mainTab('teacher','담임별')}
+      ${mainTab('class', isTeacherView?'내 반별':'반별')}
+      ${mainTab('student', isTeacherView?'내 학생':'학생별')}
     </div>
   ${body}`;
 
