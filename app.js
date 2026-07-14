@@ -921,7 +921,7 @@ function enterApp(){
     const root = location.hash.replace(/^#\//,'').split('/')[0];
     const allowedRoots = {
       admin:['admin','roster','closing','passrate-hub','accounts'],
-      teacher:['myclasses','segments','myaccount','branch'],
+      teacher:['myclasses','segments','myaccount','branch','passrate'],
       assistant:['start'],
       branch:['branch','roster','closing','data','students','start','passrate','segments-edit','teachers']
     }[session.role]||[];
