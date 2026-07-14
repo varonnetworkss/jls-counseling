@@ -659,7 +659,7 @@ function headcountClean(branchId, semId){
   const total = recs.length;
   const newRecs      = recs.filter(r=>(r.origin==='new' || r.origin==='return') && !r.transferIn);
   const transferInR  = recs.filter(r=>r.transferIn);
-  const withdrawR    = recs.filter(r=>r.status==='withdraw' && !r.transfer);
+  const withdrawR    = recs.filter(r=>!r.transfer && (r.status==='withdraw' || (r.status==='active' && r.withdrawDate)));
   const transferR    = recs.filter(r=>r.status==='withdraw' && r.transfer);
   const activeR      = recs.filter(r=>r.status==='active');
  
