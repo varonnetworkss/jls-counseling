@@ -344,6 +344,7 @@ function semRank(id){
   const o={spring:0,summer:1,fall:2,winter:3}; return parseInt(m[1],10)*10+(o[m[2]]||0);
 }
 function isPastSemester(semId){
+  if(state.migrationMode) return false; // 과거 데이터 이관 중엔 잠금 전체 해제
   const cur = currentSemester();
   return semRank(semId) < semRank(cur.id);
 }
