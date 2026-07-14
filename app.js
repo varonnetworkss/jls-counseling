@@ -3043,6 +3043,21 @@ function ensureSemester(sem){
   }
   return sem.id;
 }
+// note에서 전출/전입 대상 분원 id 추출. "장안 전출", "서수원전입" 등. 긴 이름 우선(수원 vs 서수원).
+function branchIdFromNote(note){
+  if(!note) return null;
+  const cands = db.branches
+    .map(b=>({ id:b.id, key:b.name.replace(/분원$/,'') }))  // '장안분원'→'장안'
+    .sort((a,b)=> b.key.length - a.key.length);              // 긴 것부터
+  for(const c of cands){ if(note.includes(c.key)) return c.id; }
+  return null;
+}
+// 전출일 없을 때 쓸 학기 기준일 (해당 학기 첫 달 1일)
+function semDefaultDate(semId){
+  const m=String(semId).match(/sem_(\d+)_(\w+)/); if(!m) return today();
+  const y=parseInt(m[1],10), mo={winter:12,spring:3,summer:6,fall:9}[m[2]]||3;
+  return `${y}-${String(mo).padStart(2,'0')}-01`;
+}
 function importRoster(file, branchId, semId){
   readTable(file, async rows=>{
     if(rows.length<2){ toast('데이터가 없습니다','err'); return; }
@@ -3079,7 +3094,11 @@ function importRoster(file, branchId, semId){
       const note = idx.note>=0 ? String(r[idx.note]||'').trim() : '';
       // '복귀' 글자 있으면 복귀, 없고 '신규'만 있으면 신규. 둘 다 섞여 있어도 복귀 우선.
       // (복귀생도 신규로 카운트되지만, 특이사항/배지엔 '복귀'로 구분 표시됨)
-      const origin = /복귀/.test(note)?'return' : (/신규/.test(note)?'new' : 'start');
+      // 특이사항 키워드 4분류: 전출 > 전입 > 복귀 > 신규
+      const isTransferOut = /전출/.test(note);
+      const isTransferIn  = /전입/.test(note);
+      const transferBranch = (isTransferOut||isTransferIn) ? branchIdFromNote(note) : null;
+      const origin = /복귀/.test(note)?'return' : ((/신규/.test(note)||isTransferIn)?'new' : 'start');
       const targetType = (origin==='new'||origin==='return')?'HCMC':'MC';
       const teacher = String(r[idx.teacher]||'').trim() || '미배정';
       const school = idx.school>=0 ? String(r[idx.school]||'').trim() : '';
@@ -3098,19 +3117,29 @@ function importRoster(file, branchId, semId){
       let rec = db.semesterRecords.find(x=>x.studentId===stu.id && x.branchId===branchId && x.semesterId===semId && (x.kind||'regular')===kind);
       if(!rec){
         rec={id:uid('rec'),studentId:stu.id,branchId,semesterId:semId,
-          className:classFull,classLabel:classLbl,teacher,note,targetType,status:'active',origin,enrollDate,kind};
+          className:classFull,classLabel:classLbl,teacher,note,targetType,
+          status: isTransferOut?'withdraw':'active', origin, enrollDate, kind,
+          transfer: isTransferOut, transferIn: isTransferIn,
+          transferTo: transferBranch,
+          withdrawDate: isTransferOut ? (enrollDate||semDefaultDate(semId)) : ''};
         db.semesterRecords.push(rec);
         if(kind==='exam'){ examAdded++; }
         else {
           added++;
-          if(origin==='new') db.studentMovements.push({id:uid('mv'),studentId:stu.id,branchId,semesterId:semId,type:'new',date:enrollDate||today(),memo:'명단 업로드'});
+          if(origin==='new') db.studentMovements.push({id:uid('mv'),studentId:stu.id,branchId,semesterId:semId,type:'new',date:enrollDate||today(),memo:isTransferIn?'명단 업로드(전입)':'명단 업로드'});
           if(origin==='return') db.studentMovements.push({id:uid('mv'),studentId:stu.id,branchId,semesterId:semId,type:'return',date:enrollDate||today(),memo:'명단 업로드'});
         }
       } else {
         rec.className=classFull; rec.classLabel=classLbl; rec.teacher=teacher;
         if(note) rec.note=note; rec.targetType=targetType;
         if(enrollDate) rec.enrollDate=enrollDate;
-        if(rec.status==='withdraw') rec.status='active';
+        rec.transferIn = isTransferIn;
+        if(isTransferOut){
+          rec.status='withdraw'; rec.transfer=true; rec.transferTo=transferBranch;
+          if(!rec.withdrawDate) rec.withdrawDate = enrollDate||semDefaultDate(semId);
+        } else if(rec.status==='withdraw' && !rec.transfer){
+          rec.status='active';  // 순수 퇴원이었던 것만 되살림. 전출은 유지.
+        }
         updated++;
       }
     });
