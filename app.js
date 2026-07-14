@@ -1747,7 +1747,8 @@ function onToggleExempt(studentId, stage){
   const branchId = activeBranchId();
   toggleExemption(studentId, branchId, state.semId, stage);
   render();
-}/* 학생 시험 통과/미통과 상세 팝업 (상담표에서 학생명 클릭) */
+}
+/* 학생 시험 통과/미통과 상세 팝업 (상담표에서 학생명 클릭) */
 function openStudentExams(code, name){
   const branchId = activeBranchId();
   const detail = passStudentDetail(code, branchId);
@@ -1758,7 +1759,7 @@ function openStudentExams(code, name){
       <button class="modal-x" onclick="closeModal()">×</button>
     </div>
     <div class="modal-body" style="max-height:60vh;overflow-y:auto">
-      ${detail || '<div class="empty"><div class="et">시험 기록이 없습니다</div></div>'}
+      ${detail}
     </div>`);
 }
 /* ============================================================================
