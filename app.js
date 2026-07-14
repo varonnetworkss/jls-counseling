@@ -5093,8 +5093,10 @@ function passStudentRow(code, name, a, branchId){
   return head + passStudentDetail(code, branchId);
 }
 function togglePassStudent(code){
+  const y = window.scrollY;
   state.passOpenStudent = state.passOpenStudent===code ? null : code;
   render();
+  requestAnimationFrame(()=>window.scrollTo(0, y));
 }
 
 /* 학생 상세: 시험구분별 묶어서 회차순, 교재·레슨·점수·통과여부 */
