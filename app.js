@@ -1793,7 +1793,7 @@ function rosterRows(branchId, semId, tab){
     // 4분류: new(순수신규)/transferIn(전입)/withdraw(순수퇴원)/transferOut(전출)
    if(tab==='new' && !((r.origin==='new' || r.origin==='return') && !r.transferIn)) return;
     if(tab==='transferIn' && !r.transferIn) return;
-    if(tab==='withdraw' && !(r.status==='withdraw' && !r.transfer)) return;
+    if(tab==='withdraw' && !(!r.transfer && (r.status==='withdraw' || (r.status==='active' && r.withdrawDate)))) return;
     if(tab==='transferOut' && !(r.status==='withdraw' && r.transfer)) return;
     const isIn = (tab==='new' || tab==='transferIn');
     const mvType = isIn ? 'new' : 'withdraw';
