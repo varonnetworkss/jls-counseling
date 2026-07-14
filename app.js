@@ -3053,6 +3053,16 @@ function branchIdFromNote(note){
   for(const c of cands){ if(note.includes(c.key)) return c.id; }
   return null;
 }
+// 학기말 날짜 — 가을=11/30, 겨울=2/말, 봄=5/31, 여름=8/31
+function semEndDate(semId){
+  const m=String(semId).match(/sem_(\d+)_(\w+)/); if(!m) return today();
+  let y=parseInt(m[1],10);
+  const endMap={winter:[2,28],spring:[5,31],summer:[8,31],fall:[11,30]};
+  const key=m[2]; const [mo,day]=endMap[key]||[12,31];
+  if(key==='winter') y+=1; // 겨울은 익년 2월
+  const realDay = new Date(y,mo,0).getDate(); // 2월 말일 보정(윤년)
+  return `${y}-${String(mo).padStart(2,'0')}-${String(Math.min(day,realDay)).padStart(2,'0')}`;
+}
 // 전출일 없을 때 쓸 학기 기준일 (해당 학기 첫 달 1일)
 function semDefaultDate(semId){
   const m=String(semId).match(/sem_(\d+)_(\w+)/); if(!m) return today();
@@ -3119,16 +3129,22 @@ function importRoster(file, branchId, semId){
       const note = idx.note>=0 ? String(r[idx.note]||'').trim() : '';
       // '복귀' 글자 있으면 복귀, 없고 '신규'만 있으면 신규. 둘 다 섞여 있어도 복귀 우선.
       // (복귀생도 신규로 카운트되지만, 특이사항/배지엔 '복귀'로 구분 표시됨)
-// 퇴원생(AB) 열 — 값 있으면 퇴원/전출. 전출은 분원명 파싱.
-      const wdRaw = idx.withdraw>=0 ? String(r[idx.withdraw]||'').trim() : '';
+// 퇴원생 열 — 값 있으면 퇴원/전출. 단 'ACE이관'은 반이동이라 재원 유지(퇴원 아님).
+      const wdRawFull = idx.withdraw>=0 ? String(r[idx.withdraw]||'').trim() : '';
+      const isAceMove = /ACE이관|이관/.test(wdRawFull);   // 반이동 → 퇴원 아님
+      const wdRaw = isAceMove ? '' : wdRawFull;            // 이관은 퇴원처리 제외
       const hasWd = !!wdRaw;
       const isTransferOut = /전출/.test(wdRaw) || /전출/.test(note);
       const isTransferIn  = /전입/.test(note);
       const transferBranch = (isTransferOut||isTransferIn) ? (branchIdFromNote(wdRaw)||branchIdFromNote(note)) : null;
-      let wdDate = '';
+     let wdDate = '';
       if(hasWd){
-        const rawWdDate = idx.withdrawdate>=0 ? r[idx.withdrawdate] : '';
-        wdDate = parseWithdrawDate(rawWdDate) || withdrawDateFromLabel(wdRaw, semId);
+        if(/졸업/.test(wdRaw)){
+          wdDate = semEndDate(semId);   // 중3졸업 → 학기말
+        } else {
+          const rawWdDate = idx.withdrawdate>=0 ? r[idx.withdrawdate] : '';
+          wdDate = parseWithdrawDate(rawWdDate) || withdrawDateFromLabel(wdRaw, semId);
+        }
       }
       const origin = /복귀/.test(note)?'return' : ((/신규/.test(note)||isTransferIn)?'new' : 'start');
       const targetType = (origin==='new'||origin==='return')?'HCMC':'MC';
