@@ -5061,18 +5061,23 @@ function renderPassrateHub(){
         <div style="display:flex;align-items:center;justify-content:center;height:100px;color:#C4BBDE;font-size:12px">성적 데이터가 없습니다</div>
       </div>`;
     }
+    const GCOLOR = {
+      'CHAT':    { bg:'linear-gradient(135deg,#F3EEFF,#EAE2FB)', label:'#7C6BB0', sub:'#B4A6E0', num:'#6B4FD6', pass:'#8A7CB8' },
+      '성과':    { bg:'linear-gradient(135deg,#E8F6EF,#DDF0E6)', label:'#2E8B6B', sub:'#9BD3BC', num:'#1F9268', pass:'#6BAF97' },
+      '활용':    { bg:'linear-gradient(135deg,#E9F1FC,#DEEBFA)', label:'#3D7BC0', sub:'#A4C4E8', num:'#2E6FBE', pass:'#7B9DC8' },
+      '문법인증':{ bg:'linear-gradient(135deg,#FDEFF3,#FBE3EC)', label:'#C2567E', sub:'#E9AFC5', num:'#C2567E', pass:'#C88BA3' },
+    };
     const cell = g=>{
       const a = agg[g]||emptyAgg();
       const rate = passRate(a);
-      const bad = rate<75 && a.total>0;
+      const c = GCOLOR[g] || GCOLOR['CHAT'];
       if(!a.total) return `<div style="background:#F5F2FC;border-radius:12px;padding:11px 13px"><div style="font-size:11px;color:#C4BBDE;margin-bottom:4px">${gLabel(g)}</div><div style="font-size:21px;font-weight:700;color:#D6CEEC">–</div></div>`;
-      const bg = bad ? 'linear-gradient(135deg,#FDEEF4,#FBE4EE)' : 'linear-gradient(135deg,#F3EEFF,#EDE7FC)';
       const passed = a.pass + a.repass;
-      return `<div style="background:${bg};border-radius:12px;padding:11px 13px">
-        <div style="font-size:11px;color:${bad?'#C2567E':'#7C6BB0'};margin-bottom:4px;font-weight:500">${gLabel(g)} <span style="color:${bad?'#E5A9C4':'#B4A6E0'};font-weight:400">· 총 ${a.total.toLocaleString()}</span></div>
+      return `<div style="background:${c.bg};border-radius:12px;padding:11px 13px">
+        <div style="font-size:11px;color:${c.label};margin-bottom:4px;font-weight:500">${gLabel(g)} <span style="color:${c.sub};font-weight:400">· 총 ${a.total.toLocaleString()}</span></div>
         <div style="display:flex;align-items:baseline;gap:6px">
-          <span style="font-size:21px;font-weight:700;color:${bad?'#C2567E':'#6B4FD6'}">${rate}<span style="font-size:12px">%</span></span>
-          <span style="font-size:11px;color:${bad?'#C2567E':'#8A7CB8'}">통과 ${passed.toLocaleString()}</span>
+          <span style="font-size:21px;font-weight:700;color:${c.num}">${rate}<span style="font-size:12px">%</span></span>
+          <span style="font-size:11px;color:${c.pass}">통과 ${passed.toLocaleString()}</span>
         </div>
       </div>`;
     };
