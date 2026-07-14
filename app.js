@@ -18,8 +18,15 @@ function semesterOfDate(d){
   let year = d.getFullYear();
   const month = d.getMonth()+1;
   const season = seasonOfMonth(month);
-  if(season.key==='winter' && month===12) year += 1; // 12월은 다음 해 겨울
-  return { id:`sem_${year}_${season.key}`, name:`${year}년 ${season.label}학기`, year, key:season.key };
+  if(season.key==='winter' && (month===1 || month===2)) year -= 1; // 1~2월은 직전 해 겨울(2026.01 → 25-26겨울 = sem_2025_winter)
+  return { id:`sem_${year}_${season.key}`, name:winterAwareName(year, season), year, key:season.key };
+}
+function winterAwareName(year, season){
+  if(season.key==='winter'){
+    const yy = String(year).slice(2), ny = String(year+1).slice(2);
+    return `${yy}-${ny} ${season.label}학기`; // 25-26 겨울학기
+  }
+  return `${year}년 ${season.label}학기`;
 }
 function currentSemester(){ return semesterOfDate(new Date()); }
 /* 학기 드롭다운에서 '다음 학기 추가' 선택 시 — 가장 최신 학기의 다음 학기를 만들어 전환 */
