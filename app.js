@@ -2999,9 +2999,35 @@ function classLabel(raw){
   // 최종: "월수금 3부 · PA1(1)_E6"
   return [front, core].filter(Boolean).join(' · ');
 }
+// 반시작일들의 최빈값으로 학기 자동 판별
+function detectSemesterFromRows(rows, idx){
+  if(idx.startdate<0) return null;
+  const tally = {};
+  rows.forEach(r=>{
+    const raw = String(r[idx.startdate]||'').trim();
+    const dm = raw.match(/(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})/);
+    if(!dm) return;
+    const d = new Date(parseInt(dm[1],10), parseInt(dm[2],10)-1, parseInt(dm[3],10));
+    if(isNaN(d)) return;
+    const sem = semesterOfDate(d);
+    if(!tally[sem.id]) tally[sem.id] = { sem, count:0 };
+    tally[sem.id].count++;
+  });
+  const arr = Object.values(tally);
+  if(!arr.length) return null;
+  arr.sort((a,b)=> b.count - a.count);
+  return arr[0].sem; // 최빈 학기
+}
 
+// 학기가 db.semesters에 없으면 추가 + semRank 정렬. 학기 id 반환.
+function ensureSemester(sem){
+  if(!db.semesters.some(s=>s.id===sem.id)){
+    db.semesters.push({ id:sem.id, name:sem.name });
+    db.semesters.sort((a,b)=> semRank(b.id) - semRank(a.id)); // 최신순(내림차순)
+  }
+  return sem.id;
+}
 function importRoster(file, branchId, semId){
-  if(isPastSemester(semId)){ lockedPastToast(); return; }
   readTable(file, async rows=>{
     if(rows.length<2){ toast('데이터가 없습니다','err'); return; }
     const HDR = {
@@ -3021,6 +3047,9 @@ function importRoster(file, branchId, semId){
       if(cand.name>=0 && cand.code>=0){ idx = cand; rows = rows.slice(i); break; }
     }
     if(!idx){ toast('이름·회원코드 열을 찾지 못했습니다','err'); return; }
+    // ★ 반시작일 최빈값으로 학기 자동 판별 → semId 덮어쓰기 + 학기 자동 생성
+    const autoSem = detectSemesterFromRows(rows.slice(1), idx);
+    if(autoSem){ semId = ensureSemester(autoSem); }
     let added=0, updated=0, excluded=0, examAdded=0;
     rows.slice(1).forEach(r=>{
       const name=String(r[idx.name]||'').trim();
@@ -3072,11 +3101,14 @@ function importRoster(file, branchId, semId){
     showSaving(`전체명단 저장 중… (잠시만요)`);
     const ok = await saveDB();
     hideSaving();
-    if(ok){
-      toast(`✅ 저장 완료 · 정규 신규 ${added}, 갱신 ${updated}${examAdded?`, 내신반 ${examAdded}`:''}${excluded?`, 제외 ${excluded}`:''}`,'ok');
+   if(ok){
+      const semName = (db.semesters.find(s=>s.id===semId)||{}).name || semId;
+      state.semId = semId; // 판별된 학기로 자동 전환
+      toast(`✅ ${semName}에 저장 · 정규 신규 ${added}, 갱신 ${updated}${examAdded?`, 내신반 ${examAdded}`:''}${excluded?`, 제외 ${excluded}`:''}`,'ok');
     } else {
       toast('❌ 저장 실패 — 다시 업로드해 주세요','err');
     }
+    buildShell();
     render();
   });
 }
