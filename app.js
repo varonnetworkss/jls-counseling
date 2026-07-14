@@ -913,9 +913,10 @@ function enterApp(){
       assistant:['start'],
       branch:['branch','roster','closing','data','students','start','passrate','segments-edit','teachers']
     }[session.role]||[];
-    if(!allowedRoots.includes(root)) location.hash = home;
+   if(!allowedRoots.includes(root)) location.hash = home;
     else render();
   }
+}
 function openSidebar(){
   document.querySelector('.sidebar')?.classList.add('open');
   el('sbBackdrop')?.classList.add('show');
