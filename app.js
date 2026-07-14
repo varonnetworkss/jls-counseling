@@ -5253,8 +5253,8 @@ function renderPassrate(viewBranchId){
   const tKey = isTeacherView ? teacherKey(session.teacherName) : null;
   const branchId = isAdminView ? viewBranchId : session.branchId, semId = state.semId;
   const p = passState();
-  // 담임은 반별/학생별만 — 다른 뷰로 진입 시 반별로
-  if(isTeacherView && (p.view==='branch' || p.view==='teacher')){ p.view='class'; }
+  // 담임은 '내 통과율(myteacher)' + '학생별'만
+  if(isTeacherView && p.view!=='myteacher' && p.view!=='student'){ p.view='myteacher'; }
   crumbs([{label:'STaRT 시험 통과율'}]);
   const scoreCount = activeScores(branchId, semId).length;
 
@@ -5372,16 +5372,35 @@ function renderPassrate(viewBranchId){
     <div style="background:var(--surface-2);border:0.5px solid #ECE7F5;border-radius:16px;padding:6px 18px">
       ${filtered.map(x=>passStudentRow(x.k, x.label, x.a, branchId)).join('')||emptyRow()}
     </div>`;
+ }
+
+  // ===== 담임 전용: 내 통과율 (passTeacherRow 강제 펼침) =====
+  else if(p.view==='myteacher'){
+    // 자기 담임 걸 강제로 열어둠
+    const myName = session.teacherName;
+    state.passOpenTeachers = state.passOpenTeachers || {};
+    state.passOpenTeachers[myName] = true;
+    const {result, meta} = aggregateScores(branchId, semId, {groupBy:'teacher', teacherKey:tKey});
+    // 내 키에 해당하는 result 찾기
+    const myK = Object.keys(result).find(k=>teacherKey(meta[k].label)===tKey) || Object.keys(result)[0];
+    if(myK){
+      const sortAgg = sumAggs(result[myK]);
+      body = `<div style="background:var(--surface-2);border:0.5px solid #ECE7F5;border-radius:16px;padding:6px 18px">
+        ${passTeacherRow(meta[myK].label, sortAgg, result[myK], branchId)}
+      </div>`;
+    } else {
+      body = emptyState('아직 성적 데이터가 없습니다','담당 반의 Q앱 성적이 업로드되면 통과율이 표시됩니다.');
+    }
   }
 
   el('content').innerHTML = `
     <div class="page-head"><h2>STaRT 시험 통과율</h2>
       <div class="sub">${esc(db.semesters.find(s=>s.id===semId).name)} · Q앱 성적 기준</div></div>
     ${uploadZone}
-    <div style="display:flex;gap:6px;margin-bottom:18px">
-      ${isTeacherView ? '' : mainTab('branch','분원 전체')}
+   <div style="display:flex;gap:6px;margin-bottom:18px">
+      ${isTeacherView ? mainTab('myteacher','내 통과율') : mainTab('branch','분원 전체')}
       ${isTeacherView ? '' : mainTab('teacher','담임별')}
-      ${mainTab('class', isTeacherView?'내 반별':'반별')}
+      ${isTeacherView ? '' : mainTab('class','반별')}
       ${mainTab('student', isTeacherView?'내 학생':'학생별')}
     </div>
   ${body}`;
