@@ -898,10 +898,24 @@ function enterApp(){
   const cur = currentSemester();
   state.semId = db.semesters.some(s=>s.id===cur.id) ? cur.id : (db.semesters[0] ? db.semesters[0].id : null);
   buildShell();
-  if(!location.hash || location.hash==='#'){
-   location.hash = session.role==='admin' ? '#/admin' : (session.role==='teacher' ? '#/myclasses' : '#/branch');
-  } else { render(); }
-}
+ const home = session.role==='admin' ? '#/admin'
+    : session.role==='teacher' ? '#/myclasses'
+    : session.role==='assistant' ? '#/start'
+    : '#/branch';
+  if(!location.hash || location.hash==='#' || location.hash==='#/'){
+    location.hash = home;
+  } else {
+    // 로그인 계정이 갈 수 없는 경로면 홈으로 강제
+    const root = location.hash.replace(/^#\//,'').split('/')[0];
+    const allowedRoots = {
+      admin:['admin','roster','closing','passrate-hub','accounts'],
+      teacher:['myclasses','segments','myaccount','branch'],
+      assistant:['start'],
+      branch:['branch','roster','closing','data','students','start','passrate','segments-edit','teachers']
+    }[session.role]||[];
+    if(!allowedRoots.includes(root)) location.hash = home;
+    else render();
+  }
 function openSidebar(){
   document.querySelector('.sidebar')?.classList.add('open');
   el('sbBackdrop')?.classList.add('show');
