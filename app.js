@@ -1779,7 +1779,7 @@ function rosterCount(branchId, semId){
   recordsOf(branchId, semId).forEach(r=>{
     if((r.origin==='new' || r.origin==='return') && !r.transferIn) newCnt++;
     if(r.transferIn) transferInCnt++;
-    if(r.status==='withdraw' && !r.transfer) wdCnt++;
+    if(!r.transfer && (r.status==='withdraw' || (r.status==='active' && r.withdrawDate))) wdCnt++;
     if(r.status==='withdraw' && r.transfer) transferOutCnt++;
   });
   return { newCnt, transferInCnt, wdCnt, transferOutCnt };
