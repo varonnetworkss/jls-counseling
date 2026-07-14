@@ -4627,6 +4627,11 @@ function withdrawnCodes(branchId, semId){
   });
   return set;
 }
+// 담임명 매칭용 키 — 한글 이름만 추출 (John김지순→김지순, 홍정복/Rachel→홍정복)
+function teacherKey(name){
+  const ko = (String(name||'').match(/[가-힣]+/g)||[]).join('');
+  return ko || normTeacher(name);
+}
 /* 담임 이름 정규화 — 같은 한글이름이면 영어이름 있는 쪽으로 통일 */
 function normTeacher(t){
   if(!t) return t;
