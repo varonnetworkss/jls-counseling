@@ -3163,7 +3163,9 @@ function importRoster(file, branchId, semId){
       else { stu.name=name; if(school)stu.school=school; if(grade)stu.grade=grade; }
       // 학기레코드 upsert — ★ kind까지 일치해야 같은 레코드 (정규/내신 별개 공존)
       let rec = db.semesterRecords.find(x=>x.studentId===stu.id && x.branchId===branchId && x.semesterId===semId && (x.kind||'regular')===kind);
-      const willWithdraw = hasWd || isTransferOut;
+      // 복귀(return)면서 퇴원기록 있고 재입학이 나중이면 = 퇴원 후 재입학. 재원 유지하되 퇴원일 보존(마감표 카운트용).
+      const reEnrollAfterWd = (origin==='return') && hasWd && enrollDate && wdDate && (enrollDate > wdDate);
+      const willWithdraw = (hasWd || isTransferOut) && !reEnrollAfterWd;
       const finalWdDate = isTransferOut ? (wdDate||enrollDate||semDefaultDate(semId)) : (wdDate||'');
       if(!rec){
         rec={id:uid('rec'),studentId:stu.id,branchId,semesterId:semId,
@@ -3171,7 +3173,7 @@ function importRoster(file, branchId, semId){
           status: willWithdraw?'withdraw':'active', origin, enrollDate, kind,
           transfer: isTransferOut, transferIn: isTransferIn,
           transferTo: transferBranch,
-          withdrawDate: willWithdraw ? (finalWdDate||semDefaultDate(semId)) : ''};
+          withdrawDate: willWithdraw ? (finalWdDate||semDefaultDate(semId)) : (reEnrollAfterWd ? finalWdDate : '')};
         db.semesterRecords.push(rec);
         if(kind==='exam'){ examAdded++; }
         else {
