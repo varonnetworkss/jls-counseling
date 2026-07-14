@@ -3090,10 +3090,11 @@ function importRoster(file, branchId, semId){
       grade:['학년'],
       cls:['반 이름','반이름','반명','반','클래스'],
       teacher:['담임선생님','담임명','담임','선생님'],
-      note:['특이사항','비고','메모'],
-      startdate:['반 시작일','반시작일','시작일','등원일','입학일'],
+      note:['특이사항','비고','메모','신규생'],
+      startdate:['반 시작일','반시작일','시작일'],
       withdraw:['퇴원생','퇴원','퇴원여부'],
-      withdrawdate:['퇴원일']
+      withdrawdate:['퇴원일'],
+      withdrawreason:['퇴원사유','사유']
     };
     // 맨 위 병합 제목행이 있어도 자동으로 건너뜀 — 최대 3행 탐색
     let idx = null;
