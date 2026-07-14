@@ -30,6 +30,10 @@ function winterAwareName(year, season){
 }
 function currentSemester(){ return semesterOfDate(new Date()); }
 /* 학기 드롭다운에서 '다음 학기 추가' 선택 시 — 가장 최신 학기의 다음 학기를 만들어 전환 */
+function goAddSemester(){
+  state.addSemesterMode = true; // 데이터관리 배너 표시용 플래그
+  go('data'); // 데이터관리 화면으로 이동 (라우트명 확인 필요 — 아래 참고)
+}
 function addNextSemester(){
   // db.semesters 중 가장 최신(rank 큰) 학기를 기준으로 다음 학기 계산
   const rank = id=>{ const m=String(id).match(/sem_(\d+)_(\w+)/); if(!m) return 0;
@@ -948,10 +952,10 @@ function buildShell(){
   const sel = el('semSelect');
   const isBranch = session.role==='branch';
   sel.innerHTML = db.semesters.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('')
-    + (isBranch ? `<option value="__add_next__">+ 다음 학기 추가…</option>` : '');
+    + (isBranch ? `<option value="__add_semester__">+ 학기 추가…</option>` : '');
   sel.value = state.semId;
   sel.onchange = ()=>{
-    if(sel.value==='__add_next__'){ addNextSemester(); return; }
+    if(sel.value==='__add_semester__'){ sel.value=state.semId; goAddSemester(); return; }
     state.semId = sel.value; render();
   };
   // 학기 삭제 버튼 — 분원 계정만. 관리자·선생님은 숨김.
@@ -2354,7 +2358,19 @@ function renderDataManagement(){
   const recs = recordsOf(branchId, semId);
   const histCount = db.counselingHistories.filter(c=>c.branchId===branchId && c.semesterId===semId).length;
 
+  const addBanner = state.addSemesterMode ? `
+    <div class="panel" style="margin-bottom:14px;border-color:var(--brand-soft);background:var(--brand-soft)">
+      <div style="display:flex;align-items:center;gap:10px;padding:2px 4px">
+        <div style="font-size:20px">📋</div>
+        <div>
+          <div style="font-weight:800;color:var(--brand)">새 학기 명단 업로드 대기 중</div>
+          <div style="font-size:13px;color:var(--ink-2);margin-top:2px">아래 <b>전체명단 업로드</b>에 엑셀을 올리면, 반 시작일을 읽어 학기가 자동으로 인식·추가됩니다.</div>
+        </div>
+      </div>
+    </div>` : '';
+
   el('content').innerHTML = `
+    ${addBanner}
     <div class="page-head">
       <h2>데이터관리</h2>
       <div class="sub">${esc(b.name)} · ${esc(db.semesters.find(s=>s.id===semId).name)} · 전체명단 ${recs.length}명 · 상담이력 ${histCount}건</div>
@@ -3104,6 +3120,7 @@ function importRoster(file, branchId, semId){
    if(ok){
       const semName = (db.semesters.find(s=>s.id===semId)||{}).name || semId;
       state.semId = semId; // 판별된 학기로 자동 전환
+      state.addSemesterMode = false; // 배너 해제
       toast(`✅ ${semName}에 저장 · 정규 신규 ${added}, 갱신 ${updated}${examAdded?`, 내신반 ${examAdded}`:''}${excluded?`, 제외 ${excluded}`:''}`,'ok');
     } else {
       toast('❌ 저장 실패 — 다시 업로드해 주세요','err');
