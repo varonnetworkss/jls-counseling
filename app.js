@@ -990,6 +990,7 @@ function buildShell(){
     nav.innerHTML = `
       <div class="sb-sect">선생님</div>
       <div class="sb-item" data-nav="myclasses">${I.dash}<span>내 반 현황</span></div>
+      <div class="sb-item" data-nav="passrate">${I.stu}<span>STaRT 통과율</span></div>
       <div class="sb-item" data-nav="segments">${I.seg}<span>세그먼트</span></div>
       <div class="sb-item" data-nav="myaccount">${I.acct}<span>계정 관리</span></div>`;
   } else if(session.role==='assistant'){
@@ -1059,6 +1060,7 @@ if(session.role==='teacher'){
     const allowed = (root==='myclasses')
       || (root==='segments')
       || (root==='myaccount')
+      || (root==='passrate')
       || (root==='branch' && (parts[1]==='teacher' || parts[1]==='class'));
     if(!allowed){ go('myclasses'); return; }
   }
